@@ -234,12 +234,110 @@ You can always override the auto-detection by passing `"mode": "..."`.
 
 ### 3e. Other session endpoints
 ```http
-GET    /api/chat/sessions                         # list user's sessions
-GET    /api/chat/sessions/:id/messages            # full transcript
+GET    /api/chat/sessions                         # list user's sessions (basic)
+GET    /api/chat/sessions/list                    # list sessions with message count + preview (UI sidebar)
+GET    /api/chat/sessions/:id/messages            # flat message transcript (raw rows)
+GET    /api/chat/sessions/:id/history             # paired request/response turns (UI chat thread)
 DELETE /api/chat/sessions/:id                     # cascade-delete session + messages
 ```
 
-### 3f. Drill into a citation
+---
+
+## 3f. Session list — UI sidebar
+
+Returns all sessions for the logged-in user with message count and last message preview. Use this to populate the right-side session list.
+
+```http
+GET /api/chat/sessions/list
+Authorization: Bearer <JWT>
+```
+
+Response:
+```json
+{
+  "total": 2,
+  "sessions": [
+    {
+      "session_id": 4,
+      "title": "how many testing message we have?",
+      "created_at": "2026-05-07T14:27:44.093Z",
+      "updated_at": "2026-05-07T14:41:01.493Z",
+      "message_count": 4,
+      "last_message_preview": "I don't have access to specific data..."
+    }
+  ]
+}
+```
+
+| Field | Notes |
+|---|---|
+| `session_id` | use this as the key when calling the history endpoint |
+| `title` | auto-set from the first user message (first 80 chars) |
+| `message_count` | total messages in the session (user + assistant combined) |
+| `last_message_preview` | full text of the most recent message (user or assistant) |
+| `updated_at` | last activity — sessions are ordered by this DESC |
+
+---
+
+## 3g. Session chat history — UI chat thread
+
+Returns all turns for one session with each user question already paired to its assistant response. Click a session in the sidebar → call this → render the thread.
+
+```http
+GET /api/chat/sessions/:id/history
+Authorization: Bearer <JWT>
+```
+
+Example:
+```http
+GET /api/chat/sessions/4/history
+Authorization: Bearer <JWT>
+```
+
+Response:
+```json
+{
+  "session_id": 4,
+  "title": "how many testing message we have?",
+  "created_at": "2026-05-07T14:27:44.093Z",
+  "updated_at": "2026-05-07T14:41:01.493Z",
+  "total_turns": 2,
+  "turns": [
+    {
+      "turn": 1,
+      "asked_at":    "2026-05-07T14:27:44.093Z",
+      "answered_at": "2026-05-07T14:27:49.193Z",
+      "request":  "how many testing message we have?",
+      "response": "It seems like you're asking about the number of testing messages...",
+      "sources": []
+    },
+    {
+      "turn": 2,
+      "asked_at":    "2026-05-07T14:40:55.707Z",
+      "answered_at": "2026-05-07T14:41:01.493Z",
+      "request":  "how many testing message we have?",
+      "response": "I don't have access to specific data...",
+      "sources": []
+    }
+  ]
+}
+```
+
+| Field | Notes |
+|---|---|
+| `turn` | sequential turn number within the session |
+| `asked_at` | timestamp of the user message |
+| `answered_at` | timestamp of the assistant reply (`null` if reply failed) |
+| `request` | exact text the user sent |
+| `response` | exact text the assistant replied (`null` if reply failed) |
+| `sources` | citation array from the assistant reply — includes `document_id`, `title`, `source`, `author`, `module`, `kind`, `similarity`, `snippet`, `metadata` |
+
+Returns `403` if session belongs to another user, `404` if session not found.
+
+---
+
+## 3i. Drill into a citation
+
 After receiving an assistant message with `sources`, you can fetch the full thread / PR / issue chain for any one citation without re-running the LLM:
 
 ```http
@@ -367,6 +465,36 @@ Score formula: `Σ(similarity × exp(-ln(2) × age_days / 180))` per author over
 4. `POST /api/auth/register` → `POST /api/auth/login` → save the token.
 5. Ingest at least one source (Slack / Notion / GitHub / manual `POST /api/documents`).
 6. `POST /api/chat/sessions` then `POST /api/chat/sessions/:id/messages` with `{ "content": "what is project about" }`.
+
+---
+
+## UI flow — sidebar + chat thread
+
+```
+App loads
+  │
+  ▼
+GET /api/chat/sessions/list
+  → renders right-side session list
+  → shows title, message_count, last_message_preview per session
+  │
+  ▼
+User clicks a session
+  │
+  ▼
+GET /api/chat/sessions/:id/history
+  → renders the full chat thread
+  → each turn has: request (user bubble) + response (assistant bubble) + sources (citation cards)
+  │
+  ▼
+User types a new message
+  │
+  ▼
+POST /api/chat/sessions/:id/messages
+  → returns { userMessage, assistantMessage, mode }
+  → append both to the rendered thread
+  → refresh sidebar (GET /sessions/list) to update message_count + last_message_preview
+```
 
 ---
 

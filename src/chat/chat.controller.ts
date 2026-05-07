@@ -45,6 +45,24 @@ export class ChatController {
     return this.chat.listSessions(req.user.id);
   }
 
+  /**
+   * Sidebar list — all sessions with message count + last message preview.
+   * GET /chat/sessions/list
+   */
+  @Get('sessions/list')
+  listSessionsForUI(@Req() req: any) {
+    return this.chat.listSessionsForUI(req.user.id);
+  }
+
+  /**
+   * Paired request/response turns for one session.
+   * GET /chat/sessions/:id/history
+   */
+  @Get('sessions/:id/history')
+  getSessionHistory(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.chat.getSessionHistory(req.user.id, id);
+  }
+
   @Get('sessions/:id/messages')
   getMessages(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
     return this.chat.getMessages(req.user.id, id);

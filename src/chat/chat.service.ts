@@ -152,6 +152,98 @@ export class ChatService {
     return { userMessage: userMsg, assistantMessage: assistantMsg, mode };
   }
 
+  /**
+   * Endpoint 1 — sidebar list
+   * Returns all sessions for the user with message count + last message preview.
+   */
+  async listSessionsForUI(userId: number) {
+    const res = await this.db.query(
+      `SELECT
+         s.id          AS session_id,
+         s.title,
+         s.created_at,
+         s.updated_at,
+         COUNT(m.id)::int AS message_count,
+         (
+           SELECT content
+             FROM chat_messages
+            WHERE session_id = s.id
+            ORDER BY created_at DESC
+            LIMIT 1
+         ) AS last_message_preview
+       FROM chat_sessions s
+       LEFT JOIN chat_messages m ON m.session_id = s.id
+       WHERE s.user_id = $1
+       GROUP BY s.id
+       ORDER BY s.updated_at DESC`,
+      [userId],
+    );
+
+    return {
+      total: res.rows.length,
+      sessions: res.rows,
+    };
+  }
+
+  /**
+   * Endpoint 2 — paired request/response turns for one session
+   */
+  async getSessionHistory(userId: number, sessionId: number) {
+    await this.assertOwner(userId, sessionId);
+
+    const sessionRes = await this.db.query<ChatSession>(
+      `SELECT * FROM chat_sessions WHERE id = $1`,
+      [sessionId],
+    );
+    const session = sessionRes.rows[0];
+
+    const msgRes = await this.db.query<ChatMessage>(
+      `SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC`,
+      [sessionId],
+    );
+    const rows = msgRes.rows;
+
+    const turns: Array<{
+      turn: number;
+      asked_at: Date;
+      answered_at: Date | null;
+      request: string;
+      response: string | null;
+      sources: any[];
+    }> = [];
+
+    let i = 0;
+    let turn = 1;
+    while (i < rows.length) {
+      const current = rows[i];
+      if (current.role === 'user') {
+        const next = rows[i + 1];
+        const hasReply = next?.role === 'assistant';
+        turns.push({
+          turn,
+          asked_at: current.created_at,
+          answered_at: hasReply ? next.created_at : null,
+          request: current.content,
+          response: hasReply ? next.content : null,
+          sources: hasReply ? (next.sources ?? []) : [],
+        });
+        turn++;
+        i += hasReply ? 2 : 1;
+      } else {
+        i++;
+      }
+    }
+
+    return {
+      session_id: session.id,
+      title: session.title,
+      created_at: session.created_at,
+      updated_at: session.updated_at,
+      total_turns: turns.length,
+      turns,
+    };
+  }
+
   async deleteSession(userId: number, sessionId: number): Promise<void> {
     await this.assertOwner(userId, sessionId);
     await this.db.query('DELETE FROM chat_sessions WHERE id = $1', [sessionId]);
