@@ -66,3 +66,42 @@ CREATE TABLE IF NOT EXISTS meta (
 
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages (session_id);
+
+-- =====================================================================
+-- Chatbot enhancements: module / kind / decision_type
+-- Idempotent ALTERs (safe on re-run).
+-- =====================================================================
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS module VARCHAR(200),
+  ADD COLUMN IF NOT EXISTS kind VARCHAR(50) DEFAULT 'note',
+  ADD COLUMN IF NOT EXISTS decision_type VARCHAR(50);
+
+CREATE INDEX IF NOT EXISTS idx_documents_module ON documents (module);
+CREATE INDEX IF NOT EXISTS idx_documents_kind   ON documents (kind);
+CREATE INDEX IF NOT EXISTS idx_documents_author ON documents (author);
+CREATE INDEX IF NOT EXISTS idx_documents_metadata_gin ON documents USING GIN (metadata);
+
+-- Backfill module/kind for rows missing them, derived from existing metadata.
+UPDATE documents
+SET module = COALESCE(
+      module,
+      metadata->>'module',
+      metadata->>'repo',
+      metadata->>'channel',
+      metadata->>'database_id'
+    )
+WHERE module IS NULL;
+
+UPDATE documents
+SET kind = CASE
+    WHEN metadata->>'type' = 'pull_request' THEN 'pr'
+    WHEN metadata->>'type' = 'commit'       THEN 'code'
+    WHEN metadata->>'type' = 'issue'        THEN 'issue'
+    WHEN metadata->>'type' = 'thread'       THEN 'thread'
+    WHEN metadata->>'type' = 'message'      THEN 'message'
+    WHEN source = 'notion'                  THEN 'doc'
+    WHEN title ILIKE '%ADR%' OR title ILIKE '%decision%' OR title ILIKE '%RFC%'
+                                            THEN 'decision'
+    ELSE 'note'
+  END
+WHERE kind IS NULL OR kind = 'note';

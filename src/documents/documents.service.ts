@@ -11,8 +11,47 @@ export interface DocumentRow {
   source: string;
   author: string | null;
   metadata: Record<string, any>;
+  module: string | null;
+  kind: string;
+  decision_type: string | null;
   created_at: Date;
   updated_at: Date;
+}
+
+/**
+ * Derive `module` and `kind` from a document's source + metadata + title.
+ * Used by integrations and the documents endpoint when callers don't set them
+ * explicitly.
+ */
+export function deriveModuleAndKind(input: {
+  title: string;
+  source: string;
+  metadata?: Record<string, any>;
+  module?: string | null;
+  kind?: string | null;
+}): { module: string | null; kind: string } {
+  const md = input.metadata ?? {};
+  const module =
+    input.module ??
+    md.module ??
+    md.repo ??
+    md.channel ??
+    md.database_id ??
+    null;
+
+  let kind = input.kind ?? null;
+  if (!kind) {
+    const t = md.type;
+    if (t === 'pull_request') kind = 'pr';
+    else if (t === 'commit') kind = 'code';
+    else if (t === 'issue') kind = 'issue';
+    else if (t === 'thread') kind = 'thread';
+    else if (t === 'message') kind = 'message';
+    else if (input.source === 'notion') kind = 'doc';
+    else if (/\b(adr|decision|rfc)\b/i.test(input.title)) kind = 'decision';
+    else kind = 'note';
+  }
+  return { module, kind };
 }
 
 @Injectable()
@@ -27,12 +66,20 @@ export class DocumentsService {
       `${dto.title}\n\n${dto.content}`,
     );
 
+    const { module, kind } = deriveModuleAndKind({
+      title: dto.title,
+      source: dto.source ?? 'manual',
+      metadata: dto.metadata,
+      module: dto.module,
+      kind: dto.kind,
+    });
+
     const client = await this.db.getPool().connect();
     try {
       await client.query('BEGIN');
       const docRes = await client.query<DocumentRow>(
-        `INSERT INTO documents (title, content, source, author, metadata)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO documents (title, content, source, author, metadata, module, kind, decision_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
         [
           dto.title,
@@ -40,6 +87,9 @@ export class DocumentsService {
           dto.source ?? 'manual',
           dto.author ?? null,
           dto.metadata ?? {},
+          module,
+          kind,
+          dto.decision_type ?? null,
         ],
       );
       const doc = docRes.rows[0];
