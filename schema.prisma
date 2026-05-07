@@ -18,7 +18,7 @@ enum SourceType {
 model Memory {
   id          String     @id @default(cuid())
   content     String     @db.Text
-  vectorId    String     // Reference to the ID in the Vector DB
+  vectorId    String?    // Reference to the ID in the Vector DB (Optional until embedded)
   sourceType  SourceType
   sourceUrl   String
   authorId    String?    // Reference to User
