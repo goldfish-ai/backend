@@ -8,11 +8,11 @@ import {
   RawBodyRequest,
   Req,
   Res,
-} from '@nestjs/common';
-import { Request, Response } from 'express';
-import { GithubWebhookService } from './github-webhook.service';
+} from "@nestjs/common";
+import { Request, Response } from "express";
+import { GithubWebhookService } from "./github-webhook.service";
 
-@Controller('github/events')
+@Controller("github/events")
 export class GithubEventsController {
   private readonly logger = new Logger(GithubEventsController.name);
 
@@ -21,21 +21,21 @@ export class GithubEventsController {
   @Post()
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
-    @Headers('x-hub-signature-256') sig: string,
-    @Headers('x-github-event') event: string,
+    @Headers("x-hub-signature-256") sig: string,
+    @Headers("x-github-event") event: string,
     @Body() body: any,
     @Res() res: Response,
   ) {
     // Verify signature when present
     const rawBody = req.rawBody;
     if (rawBody && sig && !this.github.verify(rawBody, sig)) {
-      res.status(HttpStatus.UNAUTHORIZED).json({ error: 'Invalid signature' });
+      res.status(HttpStatus.UNAUTHORIZED).json({ error: "Invalid signature" });
       return;
     }
 
     // Acknowledge immediately — GitHub expects a response within 10 seconds
     // and diff fetching adds extra latency
-    res.status(HttpStatus.OK).send('Received');
+    res.status(HttpStatus.OK).send("Received");
 
     this.processEvent(event, body).catch((err) =>
       this.logger.error(`Error processing GitHub event '${event}'`, err),
@@ -44,18 +44,20 @@ export class GithubEventsController {
 
   private async processEvent(event: string, payload: any): Promise<void> {
     this.logger.log(`Processing GitHub event: ${event}`);
-
+    console.dir({ event, payload }, { depth: null });
     if (
-      event === 'pull_request' &&
-      (payload.action === 'opened' || payload.action === 'closed')
+      event === "pull_request" &&
+      ["opened", "closed", "synchronize"].includes(payload.action)
     ) {
       await this.github.handlePullRequest(payload);
-    } else if (event === 'issue_comment' && payload.action === 'created') {
+    } else if (event === "issue_comment" && payload.action === "created") {
       await this.github.handleIssueComment(payload);
-    } else if (event === 'push') {
+    } else if (event === "push") {
       await this.github.handlePush(payload);
     } else {
-      this.logger.log(`Unhandled GitHub event type: ${event} (action: ${payload.action ?? 'n/a'})`);
+      this.logger.log(
+        `Unhandled GitHub event type: ${event} (action: ${payload.action ?? "n/a"})`,
+      );
     }
   }
 }

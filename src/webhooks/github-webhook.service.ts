@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import * as crypto from 'crypto';
-import axios from 'axios';
-import { DocumentsService } from '../documents/documents.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import * as crypto from "crypto";
+import axios from "axios";
+import { DocumentsService } from "../documents/documents.service";
 
 @Injectable()
 export class GithubWebhookService {
@@ -13,10 +13,10 @@ export class GithubWebhookService {
     private readonly documents: DocumentsService,
   ) {}
 
-  private authHeaders(token?: string) {
-    const t = token ?? this.config.get<string>('GITHUB_TOKEN');
+  private authHeaders(token?: string, accept: string = "application/vnd.github.v3+json") {
+    const t = token ?? this.config.get<string>("GITHUB_TOKEN");
     return {
-      Accept: 'application/vnd.github.v3.diff',
+      Accept: accept,
       ...(t ? { Authorization: `Bearer ${t}` } : {}),
     };
   }
@@ -29,53 +29,105 @@ export class GithubWebhookService {
     try {
       const { data } = await axios.get(
         `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`,
-        { headers: this.authHeaders() },
+        { headers: this.authHeaders(undefined, "application/vnd.github.v3.diff") },
       );
       return data as string;
     } catch (err) {
       this.logger.warn(
         `Could not fetch diff for ${owner}/${repo}#${pullNumber}: ${(err as any)?.message}`,
       );
-      return '';
+      return "";
+    }
+  }
+
+  async getPullRequestCommits(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+  ): Promise<any[]> {
+    try {
+      const { data } = await axios.get(
+        `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/commits`,
+        { headers: this.authHeaders() },
+      );
+      return data;
+    } catch (err) {
+      this.logger.warn(
+        `Could not fetch commits for ${owner}/${repo}#${pullNumber}: ${(err as any)?.message}`,
+      );
+      return [];
+    }
+  }
+
+  async getCommitDiff(
+    owner: string,
+    repo: string,
+    ref: string,
+  ): Promise<string> {
+    try {
+      const { data } = await axios.get(
+        `https://api.github.com/repos/${owner}/${repo}/commits/${ref}`,
+        { headers: this.authHeaders(undefined, "application/vnd.github.v3.diff") },
+      );
+      return data as string;
+    } catch (err) {
+      this.logger.warn(
+        `Could not fetch diff for commit ${owner}/${repo}@${ref}: ${(err as any)?.message}`,
+      );
+      return "";
     }
   }
 
   verify(rawBody: Buffer, signature: string): boolean {
-    const secret = this.config.get<string>('GITHUB_WEBHOOK_SECRET');
+    const secret = this.config.get<string>("GITHUB_WEBHOOK_SECRET");
     if (!secret) return true; // skip verification if not configured
     const expected = `sha256=${crypto
-      .createHmac('sha256', secret)
+      .createHmac("sha256", secret)
       .update(rawBody)
-      .digest('hex')}`;
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+      .digest("hex")}`;
+    return crypto.timingSafeEqual(
+      Buffer.from(expected),
+      Buffer.from(signature),
+    );
   }
 
   async handlePush(payload: any): Promise<number[]> {
     const commits: any[] = payload.commits ?? [];
-    const repo = payload.repository?.full_name ?? 'unknown';
+    const repo = payload.repository?.full_name ?? "unknown";
+    const [owner, repoName] = repo.split("/");
     const stored: number[] = [];
 
     for (const commit of commits) {
+      const diff = owner && repoName ? await this.getCommitDiff(owner, repoName, commit.id) : "";
+
+      const contentParts = [
+        commit.message,
+        `Author: ${commit.author.name} <${commit.author.email}>`,
+        `SHA: ${commit.id}`,
+        `URL: ${commit.url}`,
+        commit.added?.length ? `Added: ${commit.added.join(", ")}` : "",
+        commit.modified?.length
+          ? `Modified: ${commit.modified.join(", ")}`
+          : "",
+        commit.removed?.length ? `Removed: ${commit.removed.join(", ")}` : "",
+      ].filter(Boolean);
+
+      if (diff) {
+        contentParts.push("", "## Code Diff", "```diff", diff, "```");
+      }
+
       const doc = await this.documents.create({
-        title: `[Commit] ${commit.message.split('\n')[0].slice(0, 120)}`,
-        content: [
-          commit.message,
-          `Author: ${commit.author.name} <${commit.author.email}>`,
-          `SHA: ${commit.id}`,
-          `URL: ${commit.url}`,
-          commit.added?.length ? `Added: ${commit.added.join(', ')}` : '',
-          commit.modified?.length ? `Modified: ${commit.modified.join(', ')}` : '',
-          commit.removed?.length ? `Removed: ${commit.removed.join(', ')}` : '',
-        ]
-          .filter(Boolean)
-          .join('\n'),
-        source: 'github',
+        title: `[Commit] ${commit.message.split("\n")[0].slice(0, 120)}`,
+        content: contentParts.join("\n"),
+        source: "github",
         author: commit.author?.name ?? null,
         dataCreatedAt: commit.timestamp ?? null,
-        metadata: { sha: commit.id, repo, type: 'commit', auto: true },
+        metadata: { sha: commit.id, repo, type: "commit", auto: true },
       });
       stored.push(doc.id);
-      this.logger.log(`Auto-embedded commit ${commit.id.slice(0, 8)} from ${repo}`);
+      this.logger.log(
+        `Auto-embedded commit ${commit.id.slice(0, 8)} from ${repo}`,
+      );
     }
 
     return stored;
@@ -83,13 +135,15 @@ export class GithubWebhookService {
 
   async handlePullRequest(payload: any): Promise<number | null> {
     const action: string = payload.action;
-    if (!['opened', 'edited', 'closed'].includes(action)) return null;
+    if (!["opened", "edited", "closed", "synchronize"].includes(action))
+      return null;
 
     const pr = payload.pull_request;
-    const repo = payload.repository?.full_name ?? 'unknown';
-    const [owner, repoName] = repo.split('/');
+    const repo = payload.repository?.full_name ?? "unknown";
+    const [owner, repoName] = repo.split("/");
 
     const diff = await this.getPullRequestDiff(owner, repoName, pr.number);
+    const commits = await this.getPullRequestCommits(owner, repoName, pr.number);
 
     const contentParts = [
       `PR #${pr.number}: ${pr.title}`,
@@ -98,24 +152,34 @@ export class GithubWebhookService {
       `Author: ${pr.user.login}`,
       `Branch: ${pr.head.ref} → ${pr.base.ref}`,
       `Merged: ${pr.merged ?? false}`,
-      pr.body || '(no description)',
+      pr.body || "(no description)",
       `URL: ${pr.html_url}`,
     ];
 
+    if (commits && commits.length > 0) {
+      contentParts.push("", "## Commits");
+      for (const c of commits) {
+        const msg = c.commit?.message ?? "No message";
+        const author = c.commit?.author?.name ?? "Unknown";
+        const sha = c.sha?.substring(0, 7) ?? "Unknown";
+        contentParts.push(`- ${sha} ${author}: ${msg.split('\n')[0]}`);
+      }
+    }
+
     if (diff) {
-      contentParts.push('', '## Code Diff', '```diff', diff, '```');
+      contentParts.push("", "## Code Diff", "```diff", diff, "```");
     }
 
     const doc = await this.documents.create({
       title: `[PR #${pr.number}] ${pr.title}`,
-      content: contentParts.join('\n'),
-      source: 'github',
+      content: contentParts.join("\n"),
+      source: "github",
       author: pr.user?.login ?? null,
       dataCreatedAt: pr.created_at ?? null,
       metadata: {
         pr_number: pr.number,
         repo,
-        type: 'pull_request',
+        type: "pull_request",
         action,
         auto: true,
       },
@@ -126,31 +190,31 @@ export class GithubWebhookService {
   }
 
   async handleIssueComment(payload: any): Promise<number | null> {
-    if (payload.action !== 'created') return null;
+    if (payload.action !== "created") return null;
 
     const comment = payload.comment;
     const issue = payload.issue;
-    const repo = payload.repository?.full_name ?? 'unknown';
+    const repo = payload.repository?.full_name ?? "unknown";
     const isPr = !!issue.pull_request;
 
     const doc = await this.documents.create({
-      title: `[Comment on ${isPr ? 'PR' : 'Issue'} #${issue.number}] ${issue.title}`,
+      title: `[Comment on ${isPr ? "PR" : "Issue"} #${issue.number}] ${issue.title}`,
       content: [
-        `# Comment on ${isPr ? 'PR' : 'Issue'} #${issue.number}: ${issue.title}`,
+        `# Comment on ${isPr ? "PR" : "Issue"} #${issue.number}: ${issue.title}`,
         `**Author:** ${comment.user.login}`,
-        '',
+        "",
         comment.body,
-        '',
+        "",
         `URL: ${comment.html_url}`,
-      ].join('\n'),
-      source: 'github',
+      ].join("\n"),
+      source: "github",
       author: comment.user?.login ?? null,
       dataCreatedAt: comment.created_at ?? null,
       metadata: {
         issue_number: issue.number,
         comment_id: comment.id,
         repo,
-        type: 'issue_comment',
+        type: "issue_comment",
         is_pr: isPr,
         auto: true,
       },
