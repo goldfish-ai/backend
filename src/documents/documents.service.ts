@@ -68,7 +68,7 @@ export class DocumentsService {
     );
 
     const { module, kind } = deriveModuleAndKind({
-      title: dto.title,
+      title: dto.title ?? '',
       source: dto.source ?? 'manual',
       metadata: dto.metadata,
       module: dto.module,

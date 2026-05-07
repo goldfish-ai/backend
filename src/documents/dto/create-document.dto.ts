@@ -4,11 +4,11 @@ export class CreateDocumentDto {
   @IsString()
   @MinLength(1)
   @MaxLength(500)
-  title?: string;
+  title: string;
 
   @IsString()
   @MinLength(1)
-  content?: string;
+  content: string;
 
   @IsOptional()
   @IsString()
