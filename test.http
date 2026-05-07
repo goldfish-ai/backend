@@ -245,6 +245,104 @@ Content-Type: application/json
 
 
 # ─────────────────────────────────────────────
+# GITHUB LIVE EVENTS  (POST /api/github/events)
+# ─────────────────────────────────────────────
+
+### GitHub live event — pull_request opened
+POST {{baseUrl}}/github/events
+Content-Type: application/json
+X-GitHub-Event: pull_request
+
+{
+  "action": "opened",
+  "repository": { "full_name": "octocat/Hello-World", "owner": { "login": "octocat" }, "name": "Hello-World" },
+  "pull_request": {
+    "number": 42,
+    "title": "Add meeting ingestion endpoint",
+    "state": "open",
+    "body": "This PR adds the meetings ingestion module.",
+    "html_url": "https://github.com/octocat/Hello-World/pull/42",
+    "created_at": "2026-04-23T10:00:00Z",
+    "merged": false,
+    "user": { "login": "octocat" },
+    "head": { "ref": "feature/meetings" },
+    "base": { "ref": "main" }
+  }
+}
+
+###
+
+### GitHub live event — pull_request closed
+POST {{baseUrl}}/github/events
+Content-Type: application/json
+X-GitHub-Event: pull_request
+
+{
+  "action": "closed",
+  "repository": { "full_name": "octocat/Hello-World", "owner": { "login": "octocat" }, "name": "Hello-World" },
+  "pull_request": {
+    "number": 42,
+    "title": "Add meeting ingestion endpoint",
+    "state": "closed",
+    "body": "This PR adds the meetings ingestion module.",
+    "html_url": "https://github.com/octocat/Hello-World/pull/42",
+    "created_at": "2026-04-23T10:00:00Z",
+    "merged": true,
+    "user": { "login": "octocat" },
+    "head": { "ref": "feature/meetings" },
+    "base": { "ref": "main" }
+  }
+}
+
+###
+
+### GitHub live event — issue_comment created
+POST {{baseUrl}}/github/events
+Content-Type: application/json
+X-GitHub-Event: issue_comment
+
+{
+  "action": "created",
+  "repository": { "full_name": "octocat/Hello-World" },
+  "issue": {
+    "number": 10,
+    "title": "Bug: search returns empty results",
+    "pull_request": null
+  },
+  "comment": {
+    "id": 9876,
+    "body": "I reproduced this. The threshold is too high by default.",
+    "html_url": "https://github.com/octocat/Hello-World/issues/10#issuecomment-9876",
+    "created_at": "2026-04-23T11:00:00Z",
+    "user": { "login": "octocat" }
+  }
+}
+
+###
+
+### GitHub live event — push
+POST {{baseUrl}}/github/events
+Content-Type: application/json
+X-GitHub-Event: push
+
+{
+  "repository": { "full_name": "octocat/Hello-World" },
+  "commits": [
+    {
+      "id": "abc1234def5678",
+      "message": "Fix null pointer in auth service",
+      "timestamp": "2026-04-23T10:00:00Z",
+      "url": "https://github.com/octocat/Hello-World/commit/abc1234",
+      "author": { "name": "Octocat", "email": "octocat@github.com" },
+      "added": [],
+      "modified": ["src/auth/auth.service.ts"],
+      "removed": []
+    }
+  ]
+}
+
+
+# ─────────────────────────────────────────────
 # INTEGRATIONS — GITHUB
 # ─────────────────────────────────────────────
 
