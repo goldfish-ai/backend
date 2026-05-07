@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { OpenAIService } from '../openai/openai.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
+import { SeedDocumentDto } from './dto/seed-document.dto';
+import { SeedBulkDto } from './dto/seed-bulk.dto';
 
 export interface DocumentRow {
   id: number;
@@ -129,6 +131,115 @@ export class DocumentsService {
       throw new NotFoundException(`Document ${id} not found`);
     }
     return res.rows[0];
+  }
+
+  /**
+   * Quick seed: accepts raw text, derives a title from the first line,
+   * embeds the full text, and stores it. Useful for injecting test data.
+   */
+  async seed(dto: SeedDocumentDto): Promise<DocumentRow> {
+    const lines = dto.text.split('\n');
+    const title = dto.title ?? (lines[0].slice(0, 200).trim() || 'Seeded document');
+    const content = dto.text;
+    const source = dto.source ?? 'seed';
+    const { module, kind } = deriveModuleAndKind({
+      title,
+      source,
+      metadata: dto.metadata,
+    });
+
+    const embedding = await this.openai.generateEmbedding(`${title}\n\n${content}`);
+
+    const client = await this.db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const docRes = await client.query<DocumentRow>(
+        `INSERT INTO documents (title, content, source, author, metadata, module, kind)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [
+          title,
+          content,
+          source,
+          dto.author ?? null,
+          dto.metadata ?? {},
+          module,
+          kind,
+        ],
+      );
+      const doc = docRes.rows[0];
+
+      await client.query(
+        `INSERT INTO embeddings (document_id, embedding, model_name)
+         VALUES ($1, $2::vector, $3)`,
+        [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel()],
+      );
+
+      await client.query('COMMIT');
+      return doc;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Bulk seed: embeds all items in parallel, then inserts them in a single
+   * transaction. Returns the inserted document rows.
+   */
+  async seedBulk(dto: SeedBulkDto): Promise<DocumentRow[]> {
+    const items = dto.documents.map((d) => {
+      const title = d.title ?? (d.text.split('\n')[0].slice(0, 200).trim() || 'Seeded document');
+      const source = d.source ?? 'seed';
+      const { module, kind } = deriveModuleAndKind({ title, source, metadata: d.metadata });
+      return {
+        title,
+        content: d.text,
+        source,
+        author: d.author ?? null,
+        metadata: d.metadata ?? {},
+        module,
+        kind,
+      };
+    });
+
+    // Embed all texts in one batched OpenAI call
+    const embeddings = await this.openai.generateEmbeddings(
+      items.map((i) => `${i.title}\n\n${i.content}`),
+    );
+
+    const client = await this.db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const docs: DocumentRow[] = [];
+
+      for (let idx = 0; idx < items.length; idx++) {
+        const item = items[idx];
+        const docRes = await client.query<DocumentRow>(
+          `INSERT INTO documents (title, content, source, author, metadata, module, kind)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING *`,
+          [item.title, item.content, item.source, item.author, item.metadata, item.module, item.kind],
+        );
+        const doc = docRes.rows[0];
+        await client.query(
+          `INSERT INTO embeddings (document_id, embedding, model_name)
+           VALUES ($1, $2::vector, $3)`,
+          [doc.id, this.toVectorLiteral(embeddings[idx]), this.openai.getEmbeddingModel()],
+        );
+        docs.push(doc);
+      }
+
+      await client.query('COMMIT');
+      return docs;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   async remove(id: number): Promise<void> {

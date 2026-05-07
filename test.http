@@ -1,5 +1,5 @@
 @baseUrl = http://localhost:3000/api
-@token = REPLACE_WITH_JWT_TOKEN
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjMsImVtYWlsIjoidW1hbmdAaXN1bW1hdGlvbi5jb20iLCJpYXQiOjE3NzgxODAwODEsImV4cCI6MTc3ODc4NDg4MX0.9QMI1lN1KSZxIyfhMOfgRx3A_CTo9Ybifo27xWyQVdI
 
 # ─────────────────────────────────────────────
 # HEALTH
@@ -31,8 +31,8 @@ POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-  "email": "test@example.com",
-  "password": "password123"
+  "email": "umang@isummation.com",
+  "password": "admin@123"
 }
 
 ###
@@ -45,6 +45,138 @@ Authorization: Bearer {{token}}
 # ─────────────────────────────────────────────
 # DOCUMENTS
 # ─────────────────────────────────────────────
+
+### Seed document (embed & insert raw text — for testing)
+POST {{baseUrl}}/documents/seed
+Content-Type: application/json
+
+{
+  "text": "Sprint planning 2026-05-07\n\nWe decided to prioritise the search ranking improvements this sprint. Zalmen will lead the embeddings work. Rajni takes the Notion poller fix.",
+  "source": "seed",
+  "author": "Test User"
+}
+
+###
+
+### Seed document — minimal (title auto-derived from first line)
+POST {{baseUrl}}/documents/seed
+Content-Type: application/json
+
+{
+  "text": "Decision: use pgvector for semantic search\n\nAfter evaluating Pinecone and Weaviate we chose pgvector because it runs inside our existing Postgres instance and avoids an extra managed service."
+}
+
+###
+
+### Seed documents in bulk (embed & insert array — for testing)
+POST {{baseUrl}}/documents/seed/bulk
+Content-Type: application/json
+
+{
+  "documents": [
+
+  {
+
+    "text": "Billing incident report INC-102\n\nDuplicate invoices were generated because failed payment events were retried multiple times during API timeout failures. The retry queue processed already completed transactions because the billing service lacked idempotency validation.",
+
+    "title": "Duplicate Invoice Incident",
+
+    "source": "notion",
+
+    "author": "Rahul Sharma"
+
+  },
+
+  {
+
+    "text": "Slack billing outage discussion\n\nAmit Patel identified that Redis cache invalidation lag caused stale payment states to remain active longer than expected. During concurrent retries this increased the probability of duplicate invoice creation.",
+
+    "title": "Billing Outage Investigation",
+
+    "source": "slack",
+
+    "author": "Amit Patel"
+
+  },
+
+  {
+
+    "text": "PR #442 - billing reliability improvements\n\nImplemented idempotency validation, distributed payment locking, and retry queue reconciliation jobs to prevent duplicate invoice generation during payment retries.",
+
+    "title": "Billing Reliability Improvements",
+
+    "source": "github",
+
+    "author": "Rahul Sharma"
+
+  },
+
+  {
+
+    "text": "Engineering retrospective meeting\n\nRahul Sharma explained that payment retry logic was originally designed for low traffic scenarios and became unreliable under heavy concurrency. The team agreed to redesign retry processing with stronger transactional guarantees.",
+
+    "title": "Billing Retrospective Review",
+
+    "source": "slack",
+
+    "author": "Rahul Sharma"
+
+  },
+
+  {
+
+    "text": "Billing queue monitoring analysis\n\nThe infrastructure team added additional monitoring and alerting for retry queue failures after repeated invoice duplication incidents impacted financial reconciliation workflows.",
+
+    "title": "Retry Queue Monitoring Improvements",
+
+    "source": "github",
+
+    "author": "Amit Patel"
+
+  },
+
+  {
+
+    "text": "Incident resolution summary\n\nRahul Sharma led the implementation of idempotency protection while Amit Patel investigated Redis invalidation delays affecting payment consistency. Their combined fixes reduced duplicate invoice incidents by over 90 percent.",
+
+    "title": "Billing Incident Resolution Summary",
+
+    "source": "notion",
+
+    "author": "Priya Mehta"
+
+  },
+
+  {
+
+    "text": "Distributed locking proposal\n\nThe billing engineering team proposed distributed payment locking to prevent concurrent workers from processing the same invoice simultaneously during retry execution.",
+
+    "title": "Distributed Locking Proposal",
+
+    "source": "notion",
+
+    "author": "Rahul Sharma"
+
+  },
+
+  {
+
+    "text": "Billing architecture review\n\nThe team concluded that retry queue failures were amplified by stale Redis cache states and insufficient transaction boundaries in the payment service layer.",
+
+    "title": "Billing Architecture Review",
+
+    "source": "slack",
+
+    "author": "Amit Patel"
+
+  }
+
+]
+ 
+ 
+}
+
+###
 
 ### Create document manually
 POST {{baseUrl}}/documents
@@ -73,6 +205,17 @@ GET {{baseUrl}}/documents/1
 
 ### Delete document by ID
 DELETE {{baseUrl}}/documents/1
+###
+
+### Delete document by ID
+
+POST {{baseUrl}}/chat/sessions/7/messages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+ "content": "Who knows authentication best?"
+}
 
 
 # ─────────────────────────────────────────────
@@ -119,17 +262,6 @@ Content-Type: application/json
 # CHAT
 # ─────────────────────────────────────────────
 
-### Create chat session (requires auth)
-POST {{baseUrl}}/chat/sessions
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "title": "Test Chat Session"
-}
-
-###
-
 ### List chat sessions (requires auth)
 GET {{baseUrl}}/chat/sessions
 Authorization: Bearer {{token}}
@@ -137,21 +269,10 @@ Authorization: Bearer {{token}}
 ###
 
 ### Get messages for session (requires auth)
-GET {{baseUrl}}/chat/sessions/1/messages
+GET {{baseUrl}}/chat/sessions/5/messages
 Authorization: Bearer {{token}}
 
 ###
-
-### Send message to session (requires auth)
-POST {{baseUrl}}/chat/sessions/1/messages
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "content": "What do we know about the Zalmen meeting?",
-  "limit": 5,
-  "threshold": 0.15
-}
 
 ###
 
@@ -486,3 +607,21 @@ Content-Type: application/json
 
 ### Trigger Notion poll manually
 POST {{baseUrl}}/webhooks/notion/poll
+
+### Create chat session (requires auth)
+POST {{baseUrl}}/chat/sessions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+
+###
+
+### Send message to session (requires auth)
+POST {{baseUrl}}/chat/sessions/14/messages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "content": "Why were rotating refresh tokens added?",
+  "limit": 5
+}

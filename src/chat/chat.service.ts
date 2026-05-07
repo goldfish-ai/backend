@@ -76,8 +76,23 @@ export class ChatService {
     // 3. Build SearchOptions from mode defaults + caller filters
     const searchOpts = this.buildSearchOptions(mode, dto);
 
-    // 4. Run filtered semantic search (with thread expansion when needed)
-    const searchResults = await this.search.search(dto.content, searchOpts);
+    // 4a. Fetch recent history early so we can rewrite vague follow-ups
+    const historyEarly = await this.db.query<ChatMessage>(
+      `SELECT role, content FROM chat_messages
+       WHERE session_id = $1 AND id < $2
+       ORDER BY created_at DESC LIMIT 10`,
+      [sessionId, userMsg.id],
+    );
+    const historyMessages = historyEarly.rows.reverse().map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    // 4b. Rewrite vague follow-up into a self-contained search query
+    const searchQuery = await this.openai.rewriteQuery(dto.content, historyMessages);
+
+    // 4c. Run filtered semantic search using the (possibly rewritten) query
+    const searchResults = await this.search.search(searchQuery, searchOpts);
 
     // 5. Build context block — include rich provenance line per source
     const orderedResults =
@@ -91,18 +106,6 @@ export class ChatService {
     const contextBlock = orderedResults
       .map((r, i) => this.formatSource(r, i + 1))
       .join('\n\n---\n\n');
-
-    // 6. Get recent history (last 10 turns)
-    const history = await this.db.query<ChatMessage>(
-      `SELECT role, content FROM chat_messages
-       WHERE session_id = $1 AND id < $2
-       ORDER BY created_at DESC LIMIT 10`,
-      [sessionId, userMsg.id],
-    );
-    const historyMessages = history.rows.reverse().map((m) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-    }));
 
     // 7. Generate AI response with mode-specific system prompt
     const answer = await this.openai.chatWithContext(
@@ -345,8 +348,9 @@ export class ChatService {
 
     switch (mode) {
       case 'decision':
-        opts.kinds = f.kinds ?? ['decision', 'pr', 'thread', 'doc'];
+        opts.kinds = f.kinds ?? ['decision', 'pr', 'thread', 'doc', 'note'];
         opts.expandThreads = true;
+        opts.threshold = Math.max(opts.threshold ?? 0.15, 0.3);
         opts.limit = Math.max(opts.limit ?? 5, 10);
         break;
       case 'onboarding':

@@ -96,7 +96,8 @@ export class SearchService {
     let results = res.rows;
 
     if (opts.expandThreads && results.length) {
-      results = await this.appendThreadSiblings(results);
+      const highQuality = results.filter((r) => r.similarity >= 0.3);
+      results = await this.appendThreadSiblings(results, highQuality);
     }
 
     return results;
@@ -107,11 +108,12 @@ export class SearchService {
    * (same Slack thread, same PR/issue number, same repo) and merge them at the
    * end of the list with similarity=0 so the LLM has the full debate context.
    */
-  private async appendThreadSiblings(results: SearchResult[]): Promise<SearchResult[]> {
+  private async appendThreadSiblings(results: SearchResult[], seedResults?: SearchResult[]): Promise<SearchResult[]> {
     const seen = new Set(results.map((r) => r.document_id));
     const extras: SearchResult[] = [];
+    const toExpand = seedResults ?? results;
 
-    for (const r of results) {
+    for (const r of toExpand) {
       const md = r.metadata ?? {};
       let rows: SearchResult[] = [];
 

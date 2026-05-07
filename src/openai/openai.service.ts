@@ -118,4 +118,48 @@ No relevant documents were found. Answer based on general knowledge and be trans
   getEmbeddingModel() {
     return this.embeddingModel;
   }
+
+  /**
+   * If the current message is a vague follow-up (pronouns, "it", "they", "the fix", etc.)
+   * and there is prior conversation history, rewrite it into a self-contained search query.
+   * Returns the original message unchanged when no rewrite is needed.
+   */
+  async rewriteQuery(
+    message: string,
+    history: { role: 'user' | 'assistant'; content: string }[],
+  ): Promise<string> {
+    if (!history.length) return message;
+
+    // Only rewrite short/vague messages — heuristic: <60 chars or contains anaphoric words
+    const isVague =
+      message.length < 60 ||
+      /\b(it|they|them|this|that|the fix|the issue|the problem|the team|the decision|the change|the pr|the bug|the incident|the solution|those|these)\b/i.test(
+        message,
+      );
+    if (!isVague) return message;
+
+    const recent = history.slice(-4); // last 2 turns
+    const historyText = recent
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 300)}`)
+      .join('\n');
+
+    const response = await this.client.chat.completions.create({
+      model: this.chatModel,
+      temperature: 0,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a search query rewriter. Given a short follow-up question and recent conversation history, ' +
+            'rewrite the question into a concise, self-contained search query (max 20 words) that captures the full intent. ' +
+            'Output ONLY the rewritten query, no explanation.',
+        },
+        {
+          role: 'user',
+          content: `Conversation so far:\n${historyText}\n\nFollow-up question: ${message}\n\nRewritten search query:`,
+        },
+      ],
+    });
+    return response.choices[0]?.message?.content?.trim() ?? message;
+  }
 }
