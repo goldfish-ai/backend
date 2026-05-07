@@ -60,12 +60,12 @@ export class GithubService {
         content: [
           c.commit.message,
           `Author: ${c.commit.author.name} <${c.commit.author.email}>`,
-          `Date: ${c.commit.author.date}`,
           `SHA: ${c.sha}`,
           `URL: ${c.html_url}`,
         ].join('\n'),
         source: 'github',
         author: c.commit.author.name || c.author?.login || null,
+        dataCreatedAt: c.commit.author.date ?? null,
         metadata: { sha: c.sha, repo: `${owner}/${repo}`, type: 'commit' },
       });
       stored.push(doc.id);
@@ -93,12 +93,12 @@ export class GithubService {
           `State: ${pr.state}`,
           `Author: ${pr.user.login}`,
           `Branch: ${pr.head.ref} → ${pr.base.ref}`,
-          `Created: ${pr.created_at}`,
           pr.body || '(no description)',
           `URL: ${pr.html_url}`,
         ].join('\n'),
         source: 'github',
         author: pr.user?.login ?? null,
+        dataCreatedAt: pr.created_at ?? null,
         metadata: { pr_number: pr.number, repo: `${owner}/${repo}`, type: 'pull_request', state: pr.state },
       });
       stored.push(doc.id);

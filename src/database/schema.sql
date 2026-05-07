@@ -24,8 +24,14 @@ CREATE TABLE IF NOT EXISTS embeddings (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Add data_created_at column if upgrading from an older schema
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_date TIMESTAMPTZ;
+ALTER TABLE documents RENAME COLUMN source_date TO data_created_at;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS data_created_at TIMESTAMPTZ;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_documents_data_created_at ON documents (data_created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_embeddings_document_id ON embeddings (document_id);
 CREATE INDEX IF NOT EXISTS idx_embeddings_vector
   ON embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);

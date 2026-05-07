@@ -76,9 +76,8 @@ export class SlackService {
       const allMsgs = (replies.messages ?? [parent]) as any[];
       const contentLines = await Promise.all(
         allMsgs.map(async (m) => {
-          const ts = new Date(parseFloat(m.ts) * 1000).toISOString();
           const name = (await this.resolveUser(client, m.user)) ?? 'unknown';
-          return `[${ts}] ${name}: ${m.text}`;
+          return `${name}: ${m.text}`;
         }),
       );
 
@@ -90,6 +89,7 @@ export class SlackService {
         content: contentLines.join('\n'),
         source: 'slack',
         author: parentAuthor ?? undefined,
+        dataCreatedAt: new Date(parseFloat(parent.ts) * 1000).toISOString(),
         metadata: {
           channel_id: dto.channelId,
           channel: channelName,
@@ -102,14 +102,14 @@ export class SlackService {
     }
 
     for (const msg of standalone) {
-      const ts = new Date(parseFloat(msg.ts) * 1000).toISOString();
       const authorName = await this.resolveUser(client, msg.user);
 
       const doc = await this.documents.create({
         title: `[Slack #${channelName}] ${msg.text?.slice(0, 80) ?? 'Message'}`,
-        content: `[${ts}] ${authorName ?? 'unknown'}: ${msg.text}`,
+        content: msg.text ?? '',
         source: 'slack',
         author: authorName ?? undefined,
+        dataCreatedAt: new Date(parseFloat(msg.ts) * 1000).toISOString(),
         metadata: {
           channel_id: dto.channelId,
           channel: channelName,

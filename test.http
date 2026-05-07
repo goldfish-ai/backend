@@ -1,0 +1,390 @@
+@baseUrl = http://localhost:3000/api
+@token = REPLACE_WITH_JWT_TOKEN
+
+# ─────────────────────────────────────────────
+# HEALTH
+# ─────────────────────────────────────────────
+
+### Health check
+GET {{baseUrl}}/health
+
+
+# ─────────────────────────────────────────────
+# AUTH
+# ─────────────────────────────────────────────
+
+### Register
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123",
+  "name": "Test User"
+}
+
+###
+
+### Login
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+###
+
+### Get current user (requires auth)
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
+
+
+# ─────────────────────────────────────────────
+# DOCUMENTS
+# ─────────────────────────────────────────────
+
+### Create document manually
+POST {{baseUrl}}/documents
+Content-Type: application/json
+
+{
+  "title": "Manual Test Document",
+  "content": "This is the body of the document.",
+  "source": "manual",
+  "author": "Test User",
+  "dataCreatedAt": "2026-04-23T10:00:00Z",
+  "metadata": { "tag": "test" }
+}
+
+###
+
+### List all documents
+GET {{baseUrl}}/documents
+
+###
+
+### Get document by ID
+GET {{baseUrl}}/documents/1
+
+###
+
+### Delete document by ID
+DELETE {{baseUrl}}/documents/1
+
+
+# ─────────────────────────────────────────────
+# SEARCH
+# ─────────────────────────────────────────────
+
+### Semantic search
+POST {{baseUrl}}/search
+Content-Type: application/json
+
+{
+  "query": "What did Zalmen say in the meeting?",
+  "limit": 5,
+  "threshold": 0.2
+}
+
+
+# ─────────────────────────────────────────────
+# SUMMARY
+# ─────────────────────────────────────────────
+
+### Summarize a stored document by ID
+POST {{baseUrl}}/summary
+Content-Type: application/json
+
+{
+  "documentId": 1,
+  "maxWords": 100
+}
+
+###
+
+### Summarize raw text
+POST {{baseUrl}}/summary
+Content-Type: application/json
+
+{
+  "text": "NestJS is a framework for building efficient and scalable Node.js server-side applications.",
+  "maxWords": 50
+}
+
+
+# ─────────────────────────────────────────────
+# CHAT
+# ─────────────────────────────────────────────
+
+### Create chat session (requires auth)
+POST {{baseUrl}}/chat/sessions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Test Chat Session"
+}
+
+###
+
+### List chat sessions (requires auth)
+GET {{baseUrl}}/chat/sessions
+Authorization: Bearer {{token}}
+
+###
+
+### Get messages for session (requires auth)
+GET {{baseUrl}}/chat/sessions/1/messages
+Authorization: Bearer {{token}}
+
+###
+
+### Send message to session (requires auth)
+POST {{baseUrl}}/chat/sessions/1/messages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "content": "What do we know about the Zalmen meeting?",
+  "limit": 5,
+  "threshold": 0.15
+}
+
+###
+
+### Delete chat session (requires auth)
+DELETE {{baseUrl}}/chat/sessions/1
+Authorization: Bearer {{token}}
+
+
+# ─────────────────────────────────────────────
+# INTEGRATIONS — MEETINGS
+# ─────────────────────────────────────────────
+
+### Ingest meeting transcript
+POST {{baseUrl}}/integrations/meetings/ingest
+Content-Type: application/json
+
+{
+  "title": "Meeting With Zalmen-20260423_182504-Meeting Recording",
+  "date": "2026-04-23T12:55:00",
+  "duration": "50m 13s",
+  "transcript": [
+    {
+      "speaker": "Zalmen Blau",
+      "timestamp": "2026-04-23T12:04:50",
+      "text": ["Hello, testing, testing."]
+    },
+    {
+      "speaker": "Rajni Barvaliya",
+      "timestamp": "2026-04-23T12:04:52",
+      "text": ["Yes, Ivan."]
+    },
+    {
+      "speaker": "Zalmen Blau",
+      "timestamp": "2026-04-23T12:04:53",
+      "text": ["Can you hear me on the on teams?"]
+    },
+    {
+      "speaker": "Rajni Barvaliya",
+      "timestamp": "2026-04-23T12:04:57",
+      "text": ["Yes."]
+    },
+    {
+      "speaker": "Zalmen Blau",
+      "timestamp": "2026-04-23T12:04:58",
+      "text": ["Yes, okay, I'm hanging up there now."]
+    }
+  ]
+}
+
+
+# ─────────────────────────────────────────────
+# INTEGRATIONS — SLACK
+# ─────────────────────────────────────────────
+
+### Ingest Slack channel history
+POST {{baseUrl}}/integrations/slack/ingest
+Content-Type: application/json
+
+{
+  "channelId": "C12345678",
+  "limit": 50
+}
+
+###
+
+### Slack Events API — URL verification challenge
+POST {{baseUrl}}/slack/events
+Content-Type: application/json
+
+{
+  "type": "url_verification",
+  "challenge": "test-challenge-token"
+}
+
+###
+
+### Slack Events API — incoming message event
+POST {{baseUrl}}/slack/events
+Content-Type: application/json
+
+{
+  "type": "event_callback",
+  "event": {
+    "type": "message",
+    "text": "Hey team, quick update on the project.",
+    "user": "U12345678",
+    "channel": "C12345678",
+    "ts": "1745409890.000100"
+  }
+}
+
+
+# ─────────────────────────────────────────────
+# INTEGRATIONS — GITHUB
+# ─────────────────────────────────────────────
+
+### Ingest GitHub repo (commits + pulls + issues)
+POST {{baseUrl}}/integrations/github/ingest
+Content-Type: application/json
+
+{
+  "owner": "octocat",
+  "repo": "Hello-World",
+  "type": "all",
+  "limit": 10,
+  "state": "all"
+}
+
+###
+
+### Ingest commits only
+POST {{baseUrl}}/integrations/github/ingest
+Content-Type: application/json
+
+{
+  "owner": "octocat",
+  "repo": "Hello-World",
+  "type": "commits",
+  "limit": 5
+}
+
+###
+
+### Ingest pull requests only
+POST {{baseUrl}}/integrations/github/ingest
+Content-Type: application/json
+
+{
+  "owner": "octocat",
+  "repo": "Hello-World",
+  "type": "pulls",
+  "limit": 5,
+  "state": "open"
+}
+
+###
+
+### GitHub webhook — push event
+POST {{baseUrl}}/webhooks/github
+Content-Type: application/json
+X-GitHub-Event: push
+
+{
+  "repository": { "full_name": "octocat/Hello-World" },
+  "commits": [
+    {
+      "id": "abc1234def5678",
+      "message": "Fix null pointer in auth service",
+      "timestamp": "2026-04-23T10:00:00Z",
+      "url": "https://github.com/octocat/Hello-World/commit/abc1234",
+      "author": { "name": "Octocat", "email": "octocat@github.com" },
+      "added": [],
+      "modified": ["src/auth/auth.service.ts"],
+      "removed": []
+    }
+  ]
+}
+
+###
+
+### GitHub webhook — pull_request opened
+POST {{baseUrl}}/webhooks/github
+Content-Type: application/json
+X-GitHub-Event: pull_request
+
+{
+  "action": "opened",
+  "repository": { "full_name": "octocat/Hello-World" },
+  "pull_request": {
+    "number": 42,
+    "title": "Add meeting ingestion endpoint",
+    "state": "open",
+    "body": "This PR adds the meetings ingestion module.",
+    "html_url": "https://github.com/octocat/Hello-World/pull/42",
+    "created_at": "2026-04-23T10:00:00Z",
+    "merged": false,
+    "user": { "login": "octocat" },
+    "head": { "ref": "feature/meetings" },
+    "base": { "ref": "main" }
+  }
+}
+
+###
+
+### GitHub webhook — issue_comment created
+POST {{baseUrl}}/webhooks/github
+Content-Type: application/json
+X-GitHub-Event: issue_comment
+
+{
+  "action": "created",
+  "repository": { "full_name": "octocat/Hello-World" },
+  "issue": {
+    "number": 10,
+    "title": "Bug: search returns empty results",
+    "pull_request": null
+  },
+  "comment": {
+    "id": 9876,
+    "body": "I reproduced this. The threshold is too high by default.",
+    "html_url": "https://github.com/octocat/Hello-World/issues/10#issuecomment-9876",
+    "created_at": "2026-04-23T11:00:00Z",
+    "user": { "login": "octocat" }
+  }
+}
+
+
+# ─────────────────────────────────────────────
+# INTEGRATIONS — NOTION
+# ─────────────────────────────────────────────
+
+### Ingest a Notion database
+POST {{baseUrl}}/integrations/notion/ingest
+Content-Type: application/json
+
+{
+  "databaseId": "REPLACE_WITH_NOTION_DATABASE_ID"
+}
+
+###
+
+### Ingest a single Notion page
+POST {{baseUrl}}/integrations/notion/ingest
+Content-Type: application/json
+
+{
+  "pageId": "REPLACE_WITH_NOTION_PAGE_ID"
+}
+
+
+# ─────────────────────────────────────────────
+# WEBHOOKS — MANUAL TRIGGERS
+# ─────────────────────────────────────────────
+
+### Trigger Notion poll manually
+POST {{baseUrl}}/webhooks/notion/poll

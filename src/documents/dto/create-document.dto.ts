@@ -1,14 +1,14 @@
-import { IsOptional, IsString, MaxLength, MinLength, IsObject } from 'class-validator';
+import { IsDateString, IsOptional, IsString, MaxLength, MinLength, IsObject } from 'class-validator';
 
 export class CreateDocumentDto {
   @IsString()
   @MinLength(1)
   @MaxLength(500)
-  title: string;
+  title?: string;
 
   @IsString()
   @MinLength(1)
-  content: string;
+  content?: string;
 
   @IsOptional()
   @IsString()
@@ -37,4 +37,8 @@ export class CreateDocumentDto {
   @IsString()
   @MaxLength(50)
   decision_type?: string;
+  /** Original event timestamp (commit date, message time, transcript timestamp, etc.) */
+  @IsOptional()
+  @IsDateString()
+  dataCreatedAt?: string;
 }
