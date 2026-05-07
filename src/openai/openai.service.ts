@@ -59,10 +59,14 @@ export class OpenAIService {
     userMessage: string,
     contextBlock: string,
     history: { role: 'user' | 'assistant'; content: string }[] = [],
-    mode: 'qa' | 'decision' | 'onboarding' | 'history' = 'qa',
   ): Promise<string> {
     const systemPrompt = contextBlock
-      ? this.buildContextSystemPrompt(mode, contextBlock)
+      ? `You are Project Memory, an AI assistant with access to your team's institutional knowledge. 
+Answer questions using ONLY the context provided below. Cite sources by their number [Source N]. 
+If the context does not contain enough information, say so honestly.
+
+Context:
+${contextBlock}`
       : `You are Project Memory, an AI assistant for software teams. 
 No relevant documents were found. Answer based on general knowledge and be transparent about it.`;
 
@@ -76,43 +80,6 @@ No relevant documents were found. Answer based on general knowledge and be trans
       ],
     });
     return response.choices[0]?.message?.content?.trim() ?? '';
-  }
-
-  private buildContextSystemPrompt(
-    mode: 'qa' | 'decision' | 'onboarding' | 'history',
-    contextBlock: string,
-  ): string {
-    const base =
-      "You are Project Memory, an AI assistant with access to your team's institutional knowledge. " +
-      'Answer using ONLY the context below. Cite sources by their number like [Source N]. ' +
-      'If the context is insufficient, say so honestly.';
-
-    const modeInstruction = {
-      qa: '',
-      decision:
-        '\n\nThis is a DECISION ARCHAEOLOGY query. Structure your answer to surface:\n' +
-        '  • What was decided and when (date from sources).\n' +
-        '  • Who decided / who participated.\n' +
-        '  • What alternatives were considered and rejected, with reasons.\n' +
-        '  • Concerns or dissent raised during the debate — quote dissenting voices verbatim when present.\n' +
-        '  • Trade-offs that were accepted.\n' +
-        'If thread replies or PR review comments are in the context, weave them into the narrative.',
-      onboarding:
-        '\n\nThis is an ONBOARDING query from a new engineer. ' +
-        'Explain how the system works concretely:\n' +
-        '  • Cite file paths, function names, or module names from source metadata when available.\n' +
-        '  • Describe the data flow step by step.\n' +
-        '  • Point to the canonical place to start reading.\n' +
-        'Be specific, not abstract.',
-      history:
-        '\n\nThis is a HISTORY / "has anyone seen this before?" query. ' +
-        'Summarize prior occurrences in chronological order:\n' +
-        '  • Group by date (oldest → newest).\n' +
-        '  • Note who reported / who resolved each instance.\n' +
-        '  • Call out unresolved or recurring issues explicitly.',
-    }[mode];
-
-    return `${base}${modeInstruction}\n\nContext:\n${contextBlock}`;
   }
 
   getEmbeddingModel() {

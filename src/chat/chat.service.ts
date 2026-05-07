@@ -1,9 +1,9 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { OpenAIService } from '../openai/openai.service';
-import { SearchService, SearchOptions, SearchResult } from '../search/search.service';
+import { SearchService } from '../search/search.service';
 import { CreateSessionDto } from './dto/create-session.dto';
-import { CreateMessageDto, ChatFiltersDto, ChatMode } from './dto/create-message.dto';
+import { CreateMessageDto } from './dto/create-message.dto';
 
 export interface ChatSession {
   id: number;
@@ -60,39 +60,28 @@ export class ChatService {
     userId: number,
     sessionId: number,
     dto: CreateMessageDto,
-  ): Promise<{
-    userMessage: ChatMessage;
-    assistantMessage: ChatMessage;
-    mode: ChatMode;
-  }> {
+  ): Promise<{ userMessage: ChatMessage; assistantMessage: ChatMessage }> {
     await this.assertOwner(userId, sessionId);
 
     // 1. Save user message
     const userMsg = await this.saveMessage(sessionId, 'user', dto.content, []);
 
-    // 2. Resolve mode (explicit > auto-detected from query keywords)
-    const mode: ChatMode = dto.mode ?? this.detectMode(dto.content);
+    // 2. Semantic search for context
+    const searchResults = await this.search.search(
+      dto.content,
+      dto.limit ?? 5,
+      dto.threshold ?? 0.15,
+    );
 
-    // 3. Build SearchOptions from mode defaults + caller filters
-    const searchOpts = this.buildSearchOptions(mode, dto);
-
-    // 4. Run filtered semantic search (with thread expansion when needed)
-    const searchResults = await this.search.search(dto.content, searchOpts);
-
-    // 5. Build context block — include rich provenance line per source
-    const orderedResults =
-      mode === 'history'
-        ? [...searchResults].sort(
-            (a, b) =>
-              new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-          )
-        : searchResults;
-
-    const contextBlock = orderedResults
-      .map((r, i) => this.formatSource(r, i + 1))
+    // 3. Build context block from top results
+    const contextBlock = searchResults
+      .map(
+        (r, i) =>
+          `[Source ${i + 1} | ${r.source} | similarity: ${(r.similarity * 100).toFixed(0)}%]\nTitle: ${r.title}\n${r.content.slice(0, 800)}`,
+      )
       .join('\n\n---\n\n');
 
-    // 6. Get recent history (last 10 turns)
+    // 4. Get recent history (last 10 turns)
     const history = await this.db.query<ChatMessage>(
       `SELECT role, content FROM chat_messages
        WHERE session_id = $1 AND id < $2
@@ -104,35 +93,24 @@ export class ChatService {
       content: m.content,
     }));
 
-    // 7. Generate AI response with mode-specific system prompt
+    // 5. Generate AI response
     const answer = await this.openai.chatWithContext(
       dto.content,
       contextBlock,
       historyMessages,
-      mode,
     );
 
-    // 8. Save assistant message with rich source citations
-    const sources = orderedResults.map((r) => ({
+    // 6. Save assistant message with sources
+    const sources = searchResults.map((r) => ({
       document_id: r.document_id,
       title: r.title,
       source: r.source,
-      author: r.author,
-      module: r.module,
-      kind: r.kind,
-      created_at: r.created_at,
       similarity: r.similarity,
-      snippet: (r.content ?? '').slice(0, 200),
-      metadata: r.metadata ?? {},
+      snippet: r.content.slice(0, 200),
     }));
-    const assistantMsg = await this.saveMessage(
-      sessionId,
-      'assistant',
-      answer,
-      sources,
-    );
+    const assistantMsg = await this.saveMessage(sessionId, 'assistant', answer, sources);
 
-    // 9. Touch session updated_at + auto-title on first user turn
+    // 7. Update session updated_at and auto-title if first message
     await this.db.query(
       `UPDATE chat_sessions SET updated_at = NOW() WHERE id = $1`,
       [sessionId],
@@ -149,144 +127,12 @@ export class ChatService {
       );
     }
 
-    return { userMessage: userMsg, assistantMessage: assistantMsg, mode };
+    return { userMessage: userMsg, assistantMessage: assistantMsg };
   }
 
   async deleteSession(userId: number, sessionId: number): Promise<void> {
     await this.assertOwner(userId, sessionId);
     await this.db.query('DELETE FROM chat_sessions WHERE id = $1', [sessionId]);
-  }
-
-  /**
-   * Expand a single citation back to its full thread / PR / issue chain so
-   * the UI can drill into a source without re-running the LLM.
-   */
-  async expandSource(
-    userId: number,
-    sessionId: number,
-    messageId: number,
-    sourceIndex: number,
-  ): Promise<{ root: any; siblings: any[] }> {
-    await this.assertOwner(userId, sessionId);
-    const msgRes = await this.db.query<ChatMessage>(
-      `SELECT * FROM chat_messages WHERE id = $1 AND session_id = $2`,
-      [messageId, sessionId],
-    );
-    if (!msgRes.rows.length) throw new NotFoundException('Message not found');
-    const sources = msgRes.rows[0].sources ?? [];
-    const src = sources[sourceIndex];
-    if (!src) throw new NotFoundException('Source index out of range');
-
-    const md = src.metadata ?? {};
-    let siblings: any[] = [];
-
-    if (md.thread_ts) {
-      const q = await this.db.query(
-        `SELECT id, title, content, source, author, module, kind, metadata, created_at
-           FROM documents
-          WHERE source = 'slack' AND metadata->>'thread_ts' = $1 AND id <> $2
-          ORDER BY created_at ASC LIMIT 100`,
-        [String(md.thread_ts), src.document_id],
-      );
-      siblings = q.rows;
-    } else if ((md.pr_number || md.issue_number) && md.repo) {
-      const numKey = md.pr_number ? 'pr_number' : 'issue_number';
-      const numVal = md.pr_number ?? md.issue_number;
-      const q = await this.db.query(
-        `SELECT id, title, content, source, author, module, kind, metadata, created_at
-           FROM documents
-          WHERE source = 'github'
-            AND metadata->>'repo' = $1
-            AND metadata->>'${numKey}' = $2
-            AND id <> $3
-          ORDER BY created_at ASC LIMIT 100`,
-        [String(md.repo), String(numVal), src.document_id],
-      );
-      siblings = q.rows;
-    }
-
-    return { root: src, siblings };
-  }
-
-  // ------------------------------------------------------------------
-  // Internals
-  // ------------------------------------------------------------------
-
-  private detectMode(content: string): ChatMode {
-    const q = content.toLowerCase();
-    if (
-      /\bwhy did (we|you|the team)\b/.test(q) ||
-      /\bdecision\b/.test(q) ||
-      /\bdebate\b|\bconcerns? raised\b|\balternatives?\b|\btrade[- ]offs?\b/.test(q) ||
-      /\bpick(ed)? .* over\b|\bchose .* over\b/.test(q)
-    ) {
-      return 'decision';
-    }
-    if (
-      /\bhas anyone\b|\bever seen\b|\bin the past\b|\bpreviously\b|\bbefore\b.*\bissue\b/.test(q)
-    ) {
-      return 'history';
-    }
-    if (
-      /\bhow does\b|\bhow do i\b|\bwhere is\b|\bwhere does\b|\bwalk me through\b|\bonboard/.test(q)
-    ) {
-      return 'onboarding';
-    }
-    return 'qa';
-  }
-
-  private buildSearchOptions(
-    mode: ChatMode,
-    dto: CreateMessageDto,
-  ): SearchOptions {
-    const f: ChatFiltersDto = dto.filters ?? {};
-    const opts: SearchOptions = {
-      limit: dto.limit ?? 5,
-      threshold: dto.threshold ?? 0.15,
-      sources: f.sources,
-      modules: f.modules,
-      authors: f.authors,
-      kinds: f.kinds,
-      dateFrom: f.dateFrom,
-      dateTo: f.dateTo,
-    };
-
-    switch (mode) {
-      case 'decision':
-        opts.kinds = f.kinds ?? ['decision', 'pr', 'thread', 'doc'];
-        opts.expandThreads = true;
-        opts.limit = Math.max(opts.limit ?? 5, 10);
-        break;
-      case 'onboarding':
-        opts.kinds = f.kinds ?? ['code', 'doc', 'pr', 'note'];
-        opts.limit = Math.max(opts.limit ?? 5, 8);
-        break;
-      case 'history':
-        opts.limit = Math.max(opts.limit ?? 5, 15);
-        opts.threshold = Math.min(opts.threshold ?? 0.15, 0.1);
-        break;
-      case 'qa':
-      default:
-        break;
-    }
-    return opts;
-  }
-
-  private formatSource(r: SearchResult, n: number): string {
-    const date = r.created_at
-      ? new Date(r.created_at).toISOString().slice(0, 10)
-      : 'unknown';
-    const sim = r.similarity != null ? `${(r.similarity * 100).toFixed(0)}%` : 'related';
-    const parts = [
-      `Source ${n}`,
-      r.source,
-      r.kind,
-      r.module ? `module=${r.module}` : null,
-      r.author ? `by ${r.author}` : null,
-      date,
-      sim,
-    ].filter(Boolean);
-    return `[${parts.join(' | ')}]\nTitle: ${r.title}\n${(r.content ?? '').slice(0, 800)}`;
   }
 
   private async saveMessage(

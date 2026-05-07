@@ -22,19 +22,4 @@ export class CreateDocumentDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, any>;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  module?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  kind?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  decision_type?: string;
 }
