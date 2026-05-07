@@ -1,0 +1,40 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceType {
+  SLACK
+  GITHUB
+  NOTION
+}
+
+model Memory {
+  id          String     @id @default(cuid())
+  content     String     @db.Text
+  vectorId    String     // Reference to the ID in the Vector DB
+  sourceType  SourceType
+  sourceUrl   String
+  authorId    String?    // Reference to User
+  author      User?      @relation(fields: [authorId], references: [id])
+  metadata    Json?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([sourceType])
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  memories  Memory[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
