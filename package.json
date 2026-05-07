@@ -24,6 +24,8 @@
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@octokit/rest": "^22.0.1",
+    "@octokit/webhooks": "^14.2.0",
     "@prisma/client": "^6.4.0",
     "@slack/web-api": "^7.15.2",
     "reflect-metadata": "^0.2.2",

@@ -52,4 +52,46 @@ export class IngestionService {
       throw error;
     }
   }
+
+  async processGithubEvent(
+    markdownContent: string,
+    authorEmail: string | undefined,
+    authorName: string,
+    sourceUrl: string,
+    metadata: any,
+  ) {
+    try {
+      this.logger.log(`Processing GitHub event from ${authorName}`);
+
+      let user: User | null = null;
+
+      // Upsert User if email is provided
+      if (authorEmail) {
+        user = await this.prisma.user.upsert({
+          where: { email: authorEmail },
+          update: { name: authorName },
+          create: { email: authorEmail, name: authorName },
+        });
+      }
+
+      // Create Memory
+      const memory = await this.prisma.memory.create({
+        data: {
+          content: markdownContent,
+          sourceType: 'GITHUB',
+          sourceUrl,
+          authorId: user ? user.id : null,
+          metadata,
+        },
+      });
+
+      this.logger.log(
+        `Successfully saved GitHub event to DB as Memory ID: ${memory.id}`,
+      );
+      return memory;
+    } catch (error) {
+      this.logger.error('Failed to process and save GitHub event', error);
+      throw error;
+    }
+  }
 }
