@@ -1,9 +1,11 @@
-# Project Sutr.ai (स्मृति)
+# Project Goldfish.ai (स्मृति)
 
 ## Vision
-Sutr.ai is a collaborative "Collective Memory" tool for engineering teams. It connects the dots between conversation (Slack), documentation (Notion), and implementation (GitHub). It answers the "Why" behind code changes by processing tribal knowledge.
+
+Goldfish.ai is a collaborative "Collective Memory" tool for engineering teams. It connects the dots between conversation (Slack), documentation (Notion), and implementation (GitHub). It answers the "Why" behind code changes by processing tribal knowledge.
 
 ## Core Features
+
 - **Slack Ingestion:** Reads comments, threads, and meeting notes.
 - **GitHub Ingestion:** Processes PR comments, commit messages, and code diffs.
 - **Notion Ingestion:** Scans workspaces for Design Docs and RFCs.
@@ -11,6 +13,7 @@ Sutr.ai is a collaborative "Collective Memory" tool for engineering teams. It co
 - **Natural Language Query:** A RAG interface to answer developer questions.
 
 ## Tech Stack
+
 - **Framework:** NestJS (TypeScript)
 - **Database:** Prisma (PostgreSQL) for metadata.
 - **Vector Store:** Pinecone or Milvus.
