@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, MinLength, IsObject } from 'class-validator';
+import { IsDateString, IsOptional, IsString, MaxLength, MinLength, IsObject } from 'class-validator';
 
 export class CreateDocumentDto {
   @IsString()
@@ -22,4 +22,9 @@ export class CreateDocumentDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, any>;
+
+  /** Original event timestamp (commit date, message time, transcript timestamp, etc.) */
+  @IsOptional()
+  @IsDateString()
+  dataCreatedAt?: string;
 }

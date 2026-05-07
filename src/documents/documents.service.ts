@@ -10,6 +10,7 @@ export interface DocumentRow {
   summary: string | null;
   source: string;
   author: string | null;
+  data_created_at: Date | null;
   metadata: Record<string, any>;
   created_at: Date;
   updated_at: Date;
@@ -31,8 +32,8 @@ export class DocumentsService {
     try {
       await client.query('BEGIN');
       const docRes = await client.query<DocumentRow>(
-        `INSERT INTO documents (title, content, source, author, metadata)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO documents (title, content, source, author, metadata, data_created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
         [
           dto.title,
@@ -40,6 +41,7 @@ export class DocumentsService {
           dto.source ?? 'manual',
           dto.author ?? null,
           dto.metadata ?? {},
+          dto.dataCreatedAt ?? null,
         ],
       );
       const doc = docRes.rows[0];

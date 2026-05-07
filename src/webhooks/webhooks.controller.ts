@@ -37,17 +37,24 @@ export class WebhooksController {
       return { ok: false, error: 'Invalid signature' };
     }
 
+    // Process asynchronously to stay within GitHub's 10-second timeout
+    setImmediate(() => {
+      this.processGithubEvent(event, body).catch((err) =>
+        this.logger.error(`Error processing GitHub event '${event}'`, err),
+      );
+    });
+
+    return { ok: true, event };
+  }
+
+  private async processGithubEvent(event: string, body: any): Promise<void> {
     if (event === 'push') {
-      const stored = await this.github.handlePush(body);
-      return { ok: true, event, stored };
+      await this.github.handlePush(body);
+    } else if (event === 'pull_request') {
+      await this.github.handlePullRequest(body);
+    } else if (event === 'issue_comment') {
+      await this.github.handleIssueComment(body);
     }
-
-    if (event === 'pull_request') {
-      const id = await this.github.handlePullRequest(body);
-      return { ok: true, event, stored: id ? [id] : [] };
-    }
-
-    return { ok: true, event, stored: [] };
   }
 
   /** Slack Events API: Configure in App settings → Event Subscriptions */

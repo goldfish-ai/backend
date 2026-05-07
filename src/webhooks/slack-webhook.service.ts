@@ -66,7 +66,7 @@ export class SlackWebhookService {
     if (!text) return null;
 
     const userId: string = event.user ?? 'unknown';
-    const ts = new Date(parseFloat(event.ts) * 1000).toISOString();
+    const dataCreatedAt = new Date(parseFloat(event.ts) * 1000).toISOString();
     const isThreadReply = !!(event.thread_ts && event.thread_ts !== event.ts);
 
     // Resolve real name via Slack API
@@ -74,9 +74,10 @@ export class SlackWebhookService {
 
     const doc = await this.documents.create({
       title: `[Slack] ${authorName}: ${text.slice(0, 80)}`,
-      content: `[${ts}] ${authorName}: ${text}`,
+      content: text,
       source: 'slack',
       author: authorName,
+      dataCreatedAt,
       metadata: {
         channel_id: channel,
         ts: event.ts,
