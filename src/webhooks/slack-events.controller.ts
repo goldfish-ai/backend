@@ -10,16 +10,12 @@ import {
   Post,
   RawBodyRequest,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ProjectMemberGuard } from '../projects/guards/project-member.guard';
 import { SlackWebhookService } from './slack-webhook.service';
 
 /** Project-scoped route: POST /api/projects/:projectId/webhooks/slack */
 @Controller('projects/:projectId/webhooks/slack')
-@UseGuards(JwtAuthGuard, ProjectMemberGuard)
 export class SlackEventsProjectController {
   private readonly logger = new Logger(SlackEventsProjectController.name);
 

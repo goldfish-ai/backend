@@ -20,7 +20,6 @@ import { NotionPollService } from './notion-poll.service';
 
 /** Project-scoped webhooks: POST /api/projects/:projectId/webhooks/... */
 @Controller('projects/:projectId/webhooks')
-@UseGuards(JwtAuthGuard, ProjectMemberGuard)
 export class WebhooksProjectController {
   private readonly logger = new Logger(WebhooksProjectController.name);
 
@@ -88,6 +87,7 @@ export class WebhooksProjectController {
 
   @Post('notion/poll')
   @HttpCode(200)
+  @UseGuards(JwtAuthGuard, ProjectMemberGuard)
   triggerNotionPoll(@Param('projectId', ParseIntPipe) projectId: number) {
     return this.notionPoll.triggerPoll(projectId);
   }

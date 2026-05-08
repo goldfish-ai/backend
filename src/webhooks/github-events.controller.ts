@@ -10,16 +10,12 @@ import {
   RawBodyRequest,
   Req,
   Res,
-  UseGuards,
 } from "@nestjs/common";
 import { Request, Response } from "express";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
-import { ProjectMemberGuard } from "../projects/guards/project-member.guard";
 import { GithubWebhookService } from "./github-webhook.service";
 
 /** Project-scoped route: POST /api/projects/:projectId/webhooks/github */
 @Controller("projects/:projectId/webhooks/github")
-@UseGuards(JwtAuthGuard, ProjectMemberGuard)
 export class GithubEventsProjectController {
   private readonly logger = new Logger(GithubEventsProjectController.name);
 
