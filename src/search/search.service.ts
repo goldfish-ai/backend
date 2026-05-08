@@ -14,6 +14,8 @@ export interface SearchResult {
   metadata: Record<string, any>;
   similarity: number;
   created_at: Date;
+  /** Resolved deep-link to the original source (GitHub commit/PR/issue, Slack message). */
+  source_url: string | null;
 }
 
 export interface SearchOptions {
@@ -95,7 +97,7 @@ export class SearchService {
     `;
 
     const res = await this.db.query<SearchResult>(sql, params);
-    let results = res.rows;
+    let results = res.rows.map((r) => ({ ...r, source_url: this.resolveSourceUrl(r) }));
 
     if (opts.expandThreads && results.length) {
       const highQuality = results.filter((r) => r.similarity >= 0.3);
@@ -103,6 +105,40 @@ export class SearchService {
     }
 
     return results;
+  }
+
+  /**
+   * Derive a direct deep-link URL from document source + metadata.
+   * Returns null when insufficient metadata is available.
+   */
+  private resolveSourceUrl(r: { source: string; metadata: Record<string, any> }): string | null {
+    const md = r.metadata ?? {};
+
+    if (r.source === 'github') {
+      const repo = md.repo as string | undefined;
+      if (!repo) return null;
+      const type = md.type as string | undefined;
+      if (type === 'commit' && md.sha)
+        return `https://github.com/${repo}/commit/${md.sha}`;
+      if (type === 'pull_request' && md.pr_number)
+        return `https://github.com/${repo}/pull/${md.pr_number}`;
+      if (type === 'issue' && md.issue_number)
+        return `https://github.com/${repo}/issues/${md.issue_number}`;
+      if (type === 'issue_comment' && md.issue_number) {
+        const anchor = md.comment_id ? `#issuecomment-${md.comment_id}` : '';
+        const path = md.is_pr ? 'pull' : 'issues';
+        return `https://github.com/${repo}/${path}/${md.issue_number}${anchor}`;
+      }
+    }
+
+    if (r.source === 'slack') {
+      const channelId = md.channel_id as string | undefined;
+      const ts = (md.thread_ts ?? md.ts) as string | undefined;
+      if (channelId && ts)
+        return `https://slack.com/app_redirect?channel=${channelId}&message_ts=${ts}`;
+    }
+
+    return null;
   }
 
   /**
@@ -153,7 +189,7 @@ export class SearchService {
       for (const sib of rows) {
         if (!seen.has(sib.document_id)) {
           seen.add(sib.document_id);
-          extras.push(sib);
+          extras.push({ ...sib, source_url: this.resolveSourceUrl(sib) });
         }
       }
     }

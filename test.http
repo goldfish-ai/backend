@@ -617,11 +617,22 @@ Content-Type: application/json
 ###
 
 ### Send message to session (requires auth)
-POST {{baseUrl}}/chat/sessions/14/messages
+POST {{baseUrl}}/chat/sessions/1/messages
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "content": "Why were rotating refresh tokens added?",
+  "content": "Why we choose postgresql instead mysql?",
   "limit": 5
+}
+###
+
+POST {{baseUrl}}/integrations/github/ingest
+Content-Type: application/json
+
+{
+  "owner": "goldfish-ai",
+  "repo": "backend",
+  "type": "all",
+  "branch": "development"
 }
