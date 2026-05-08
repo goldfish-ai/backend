@@ -67,18 +67,64 @@ No body.
 ---
 
 #### `GET /api/projects/:projectId/integrations`
-No body.
+No body. Sensitive fields (`token`, `webhookSecret`, `signingSecret`) are masked as `"***"` in the response.
 
 ---
 
 #### `PUT /api/projects/:projectId/integrations/:provider`
 `:provider` — one of `github`, `slack`, `notion`
+
+Full config replace. Use the dedicated endpoints below for GitHub/Slack secrets to avoid overwriting other keys.
 ```json
 { "config": { "token": "ghp_xxx", "webhookSecret": "abc123" } }
 ```
 | Field | Type | |
 |-------|------|-|
 | `config` | `object` (provider-specific key/value pairs) | **(R)** |
+
+---
+
+#### `POST /api/projects/:projectId/integrations/github/token`
+Validates the token against the GitHub API before saving. Merges into existing config without overwriting other keys.
+```json
+{ "token": "ghp_your-personal-access-token" }
+```
+| Field | Type | |
+|-------|------|-|
+| `token` | `string` | **(R)** |
+
+---
+
+#### `POST /api/projects/:projectId/integrations/github/webhook-secret`
+Merges into existing config without overwriting other keys (e.g. token).
+```json
+{ "webhookSecret": "your-webhook-hmac-secret" }
+```
+| Field | Type | |
+|-------|------|-|
+| `webhookSecret` | `string` | **(R)** |
+
+---
+
+#### `POST /api/projects/:projectId/integrations/slack/token`
+Merges into existing config without overwriting other keys.
+```json
+{ "token": "xoxb-your-slack-bot-token" }
+```
+| Field | Type | |
+|-------|------|-|
+| `token` | `string` | **(R)** |
+
+---
+
+#### `POST /api/projects/:projectId/integrations/slack/signing-secret`
+Merges into existing config without overwriting other keys (e.g. token).
+```json
+{ "signingSecret": "your-slack-signing-secret" }
+```
+| Field | Type | |
+|-------|------|-|
+| `signingSecret` | `string` | **(R)** |
 
 ---
 
