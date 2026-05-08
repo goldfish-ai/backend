@@ -156,6 +156,50 @@ export class ProjectsService {
   }
 
   /**
+   * Validates a Slack bot token by calling auth.test on the Slack Web API.
+   * Throws UnprocessableEntityException if the token is invalid.
+   * Returns the authenticated team and user on success.
+   */
+  async validateSlackToken(token: string): Promise<{ team: string; user: string }> {
+    try {
+      const { data } = await axios.post(
+        'https://slack.com/api/auth.test',
+        null,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!data.ok) throw new Error(data.error ?? 'auth.test returned ok: false');
+      return { team: data.team, user: data.user };
+    } catch {
+      throw new UnprocessableEntityException('Invalid Slack token');
+    }
+  }
+
+  /**
+   * Validates a Slack signing secret.
+   * Slack signing secrets are 32-character hex strings.
+   * Throws UnprocessableEntityException if shorter than 32 characters.
+   */
+  private validateSlackSigningSecret(secret: string): void {
+    if (secret.length < 32) {
+      throw new UnprocessableEntityException(
+        'Slack signing secret must be at least 32 characters',
+      );
+    }
+  }
+
+  /**
+   * Validates a GitHub webhook secret.
+   * Throws UnprocessableEntityException if the secret is shorter than 16 characters.
+   */
+  private validateGithubWebhookSecret(secret: string): void {
+    if (secret.length < 16) {
+      throw new UnprocessableEntityException(
+        'GitHub webhook secret must be at least 16 characters',
+      );
+    }
+  }
+
+  /**
    * Validates a GitHub PAT by calling GET /user on the GitHub API.
    * Throws UnprocessableEntityException if the token is invalid.
    * Returns the authenticated GitHub login on success.
@@ -187,6 +231,16 @@ export class ProjectsService {
     if (provider === 'github' && config.token) {
       await this.validateGithubToken(config.token);
     }
+    if (provider === 'github' && config.webhookSecret) {
+      this.validateGithubWebhookSecret(config.webhookSecret);
+    }
+    // Validate Slack token and signing secret before saving
+    if (provider === 'slack' && config.token) {
+      await this.validateSlackToken(config.token);
+    }
+    if (provider === 'slack' && config.signingSecret) {
+      this.validateSlackSigningSecret(config.signingSecret);
+    }
 
     const res = await this.db.query<ProjectIntegration>(
       `INSERT INTO project_integrations (project_id, provider, config)
@@ -206,6 +260,15 @@ export class ProjectsService {
   ): Promise<ProjectIntegration> {
     if (provider === 'github' && partial.token) {
       await this.validateGithubToken(partial.token);
+    }
+    if (provider === 'github' && partial.webhookSecret) {
+      this.validateGithubWebhookSecret(partial.webhookSecret);
+    }
+    if (provider === 'slack' && partial.token) {
+      await this.validateSlackToken(partial.token);
+    }
+    if (provider === 'slack' && partial.signingSecret) {
+      this.validateSlackSigningSecret(partial.signingSecret);
     }
 
     const res = await this.db.query<ProjectIntegration>(
