@@ -1,18 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import OpenAI from "openai";
 
 @Injectable()
 export class OpenAIService {
   private readonly logger = new Logger(OpenAIService.name);
   private readonly client: OpenAI;
-  private readonly embeddingModel = 'text-embedding-3-small';
-  private readonly chatModel = 'gpt-4o-mini';
+  private readonly embeddingModel = "text-embedding-3-small";
+  private readonly chatModel = "gpt-4o-mini";
 
   constructor(private readonly config: ConfigService) {
-    const apiKey = this.config.get<string>('OPENAI_API_KEY');
+    const apiKey = this.config.get<string>("OPENAI_API_KEY");
     if (!apiKey) {
-      throw new Error('OPENAI_API_KEY is not set');
+      throw new Error("OPENAI_API_KEY is not set");
     }
     this.client = new OpenAI({ apiKey });
   }
@@ -42,24 +42,24 @@ export class OpenAIService {
       temperature: 0.3,
       messages: [
         {
-          role: 'system',
+          role: "system",
           content:
-            'You are a precise technical writer. Summarize the user-provided document into a clear, concise summary preserving key facts, decisions, and reasoning. Use plain prose, no markdown headers.',
+            "You are a precise technical writer. Summarize the user-provided document into a clear, concise summary preserving key facts, decisions, and reasoning. Use plain prose, no markdown headers.",
         },
         {
-          role: 'user',
+          role: "user",
           content: `Summarize the following in roughly ${maxWords} words:\n\n${text}`,
         },
       ],
     });
-    return response.choices[0]?.message?.content?.trim() ?? '';
+    return response.choices[0]?.message?.content?.trim() ?? "";
   }
 
   async chatWithContext(
     userMessage: string,
     contextBlock: string,
-    history: { role: 'user' | 'assistant'; content: string }[] = [],
-    mode: 'qa' | 'decision' | 'onboarding' | 'history' = 'qa',
+    history: { role: "user" | "assistant"; content: string }[] = [],
+    mode: "qa" | "decision" | "onboarding" | "history" = "qa",
   ): Promise<string> {
     const systemPrompt = contextBlock
       ? this.buildContextSystemPrompt(mode, contextBlock)
@@ -70,46 +70,46 @@ No relevant documents were found. Answer based on general knowledge and be trans
       model: this.chatModel,
       temperature: 0.2,
       messages: [
-        { role: 'system', content: systemPrompt },
+        { role: "system", content: systemPrompt },
         ...history,
-        { role: 'user', content: userMessage },
+        { role: "user", content: userMessage },
       ],
     });
-    return response.choices[0]?.message?.content?.trim() ?? '';
+    return response.choices[0]?.message?.content?.trim() ?? "";
   }
 
   private buildContextSystemPrompt(
-    mode: 'qa' | 'decision' | 'onboarding' | 'history',
+    mode: "qa" | "decision" | "onboarding" | "history",
     contextBlock: string,
   ): string {
     const base =
       "You are Project Memory, an AI assistant with access to your team's institutional knowledge. " +
-      'Answer using ONLY the context below. Cite sources by their number like [Source N]. ' +
-      'If the context is insufficient, say so honestly.';
+      "Answer using ONLY the context below. Cite sources by their number like [Source N]. " +
+      "If the context is insufficient, say so honestly.";
 
     const modeInstruction = {
-      qa: '',
+      qa: "",
       decision:
-        '\n\nThis is a DECISION ARCHAEOLOGY query. Structure your answer to surface:\n' +
-        '  • What was decided and when (date from sources).\n' +
-        '  • Who decided / who participated.\n' +
-        '  • What alternatives were considered and rejected, with reasons.\n' +
-        '  • Concerns or dissent raised during the debate — quote dissenting voices verbatim when present.\n' +
-        '  • Trade-offs that were accepted.\n' +
-        'If thread replies or PR review comments are in the context, weave them into the narrative.',
+        "\n\nThis is a DECISION ARCHAEOLOGY query. Structure your answer to surface:\n" +
+        "  • What was decided and when (date from sources).\n" +
+        "  • Who decided / who participated.\n" +
+        "  • What alternatives were considered and rejected, with reasons.\n" +
+        "  • Concerns or dissent raised during the debate — quote dissenting voices verbatim when present.\n" +
+        "  • Trade-offs that were accepted.\n" +
+        "If thread replies or PR review comments are in the context, weave them into the narrative.",
       onboarding:
-        '\n\nThis is an ONBOARDING query from a new engineer. ' +
-        'Explain how the system works concretely:\n' +
-        '  • Cite file paths, function names, or module names from source metadata when available.\n' +
-        '  • Describe the data flow step by step.\n' +
-        '  • Point to the canonical place to start reading.\n' +
-        'Be specific, not abstract.',
+        "\n\nThis is an ONBOARDING query from a new engineer. " +
+        "Explain how the system works concretely:\n" +
+        "  • Cite file paths, function names, or module names from source metadata when available.\n" +
+        "  • Describe the data flow step by step.\n" +
+        "  • Point to the canonical place to start reading.\n" +
+        "Be specific, not abstract.",
       history:
         '\n\nThis is a HISTORY / "has anyone seen this before?" query. ' +
-        'Summarize prior occurrences in chronological order:\n' +
-        '  • Group by date (oldest → newest).\n' +
-        '  • Note who reported / who resolved each instance.\n' +
-        '  • Call out unresolved or recurring issues explicitly.',
+        "Summarize prior occurrences in chronological order:\n" +
+        "  • Group by date (oldest → newest).\n" +
+        "  • Note who reported / who resolved each instance.\n" +
+        "  • Call out unresolved or recurring issues explicitly.",
     }[mode];
 
     return `${base}${modeInstruction}\n\nContext:\n${contextBlock}`;
@@ -142,26 +142,27 @@ No relevant documents were found. Answer based on general knowledge and be trans
     if (wordCount < 2) return null;
 
     // Universal LLM relevance check — source-aware prompt
-    const truncatedForRelevance = doc.content.length > 1200
-      ? doc.content.slice(0, 1200) + '...'
-      : doc.content;
+    const truncatedForRelevance =
+      doc.content.length > 1200
+        ? doc.content.slice(0, 1200) + "..."
+        : doc.content;
 
     const relevanceRaw = await this.client.chat.completions.create({
       model: this.chatModel,
       temperature: 0,
-      response_format: { type: 'json_object' },
+      response_format: { type: "json_object" },
       messages: [
         {
-          role: 'system',
+          role: "system",
           content:
-            'You are a relevance classifier for a software engineering team knowledge base. ' +
-            'Respond ONLY with valid JSON.',
+            "You are a relevance classifier for a software engineering team knowledge base. " +
+            "Respond ONLY with valid JSON.",
         },
         {
-          role: 'user',
+          role: "user",
           content:
             `Classify whether this document contains meaningful, non-trivial information worth storing.\n\n` +
-            `Source: ${doc.source}  Kind: ${doc.kind ?? 'unknown'}\n\n` +
+            `Source: ${doc.source}  Kind: ${doc.kind ?? "unknown"}\n\n` +
             `RELEVANT examples by source:\n` +
             `- slack: technical discussions, bugs, features, architecture, decisions, incidents, code reviews\n` +
             `- github: commits with real changes, PRs with descriptions, issues with substance\n` +
@@ -183,52 +184,96 @@ No relevant documents were found. Answer based on general knowledge and be trans
 
     try {
       const parsed = JSON.parse(
-        relevanceRaw.choices[0]?.message?.content?.trim() ?? '{}',
+        relevanceRaw.choices[0]?.message?.content?.trim() ?? "{}",
       ) as { relevant?: boolean };
       if (parsed.relevant === false) return null;
     } catch {
       // If parse fails, assume relevant — safer to keep than lose data
     }
 
-    // Truncate content to stay within token limits
-    const truncatedContent =
-      doc.content.length > 6000
-        ? doc.content.slice(0, 6000) + '\n...[truncated]'
-        : doc.content;
+    const cleanedContent = doc.content
+      // Remove URLs
+      .replace(/https?:\/\/\S+/g, "")
+
+      // Remove markdown code blocks
+      .replace(/```[\s\S]*?```/g, " ")
+
+      // Remove inline code
+      .replace(/`[^`]*`/g, " ")
+
+      // Remove stack traces / log-like lines
+      .replace(/^(\s*at\s.+|\[.*?\]\s.*|INFO\s.*|WARN\s.*|ERROR\s.*)$/gm, " ")
+
+      // Remove greetings / conversational noise
+      .replace(
+        /\b(hi|hello|hey|thanks|thank you|good morning|good evening|ok|okay|cool|sure|got it)\b/gi,
+        " ",
+      )
+
+      // Collapse whitespace
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 15000);
 
     const response = await this.client.chat.completions.create({
       model: this.chatModel,
-      temperature: 0.1,
+      temperature: 0,
       messages: [
         {
-          role: 'system',
+          role: "system",
           content:
-            'You are a knowledge distillation engine for a software engineering team. ' +
-            'Your job is to produce concise, information-dense text optimised for semantic search.',
+            "You are a knowledge distillation engine for a software engineering team. " +
+            "Convert conversations, technical documents, pull request discussions, tickets, " +
+            "architecture notes, and debugging sessions into compact semantic-search-optimized summaries. " +
+            "Ignore conversational noise, greetings, acknowledgements, filler text, repetition, and unrelated chatter.",
         },
         {
-          role: 'user',
+          role: "user",
           content:
-            `Produce a clean, information-dense paragraph (max 120 words) from the document below ` +
-            `that will be used as the text for a semantic embedding.\n\n` +
-            `Rules:\n` +
-            `- Include: what this is about, which module/service it belongs to, key changes or ` +
-            `decisions made, important technical terms, people involved.\n` +
-            `- Strip: raw code diffs, stack traces, URLs, timestamps, log lines, markdown syntax, ` +
-            `filler words.\n` +
-            `- Write in plain prose. No bullet points. No headers.\n\n` +
-            `Document metadata:\n` +
-            `- Title: ${doc.title}\n` +
-            `- Source: ${doc.source}\n` +
-            `- Kind: ${doc.kind ?? 'unknown'}\n` +
-            `- Module: ${doc.module ?? 'unknown'}\n` +
-            `- Author: ${doc.author ?? 'unknown'}\n\n` +
-            `Document content:\n${truncatedContent}\n\n` +
-            `Output ONLY the paragraph. No labels, no preamble.`,
+            `Generate a concise semantic embedding summary from the document below.\n\n` +
+            `OBJECTIVE:\n` +
+            `Create a dense technical summary preserving implementation decisions, ` +
+            `architecture changes, debugging outcomes, business logic updates, and engineering context.\n\n` +
+            `RULES:\n` +
+            `- Maximum 120 words.\n` +
+            `- Ignore greetings, pleasantries, acknowledgements, jokes, and small talk.\n` +
+            `- Summarize long discussions into compact technical prose.\n` +
+            `- If the discussion includes codebase changes, explicitly include:\n` +
+            `  - affected modules, services, APIs, components, hooks, schemas, permissions, or database changes\n` +
+            `  - UI/UX behavior updates\n` +
+            `  - validation or business logic changes\n` +
+            `  - bug fixes and behavior corrections\n` +
+            `  - architectural or implementation decisions\n` +
+            `  - libraries, frameworks, utilities, patterns, or technologies involved\n` +
+            `- Prioritize retrieval-friendly technical keywords.\n` +
+            `- Include people involved only if technically relevant.\n` +
+            `- Remove markdown, raw diffs, stack traces, logs, timestamps, URLs, and repetitive text.\n` +
+            `- Write as a single dense paragraph.\n` +
+            `- No bullet points.\n` +
+            `- No headings.\n` +
+            `- No explanations.\n\n` +
+            `PRIORITIZE:\n` +
+            `- feature additions\n` +
+            `- permission changes\n` +
+            `- schema updates\n` +
+            `- API contract changes\n` +
+            `- UI behavior changes\n` +
+            `- performance optimizations\n` +
+            `- bug fixes\n` +
+            `- migration or deployment-impacting changes\n\n` +
+            `DOCUMENT METADATA:\n` +
+            `Title: ${doc.title}\n` +
+            `Source: ${doc.source}\n` +
+            `Kind: ${doc.kind ?? "unknown"}\n` +
+            `Module: ${doc.module ?? "unknown"}\n` +
+            `Author: ${doc.author ?? "unknown"}\n\n` +
+            `DOCUMENT CONTENT:\n${cleanedContent}\n\n` +
+            `OUTPUT:\n` +
+            `Only the final semantic summary paragraph.`,
         },
       ],
     });
-
+    console.dir(response, { depth: null });
     return response.choices[0]?.message?.content?.trim() ?? null;
   }
 
@@ -239,31 +284,34 @@ No relevant documents were found. Answer based on general knowledge and be trans
    */
   async rewriteQuery(
     message: string,
-    history: { role: 'user' | 'assistant'; content: string }[],
+    history: { role: "user" | "assistant"; content: string }[],
   ): Promise<string> {
     if (!history.length) return message;
 
     // Use the last 6 messages (3 turns) for rewrite context
     const recent = history.slice(-6);
     const historyText = recent
-      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 400)}`)
-      .join('\n');
+      .map(
+        (m) =>
+          `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 400)}`,
+      )
+      .join("\n");
 
     const response = await this.client.chat.completions.create({
       model: this.chatModel,
       temperature: 0,
       messages: [
         {
-          role: 'system',
+          role: "system",
           content:
-            'You are a search query rewriter for a software team knowledge base. ' +
-            'Given a conversation history and the latest question, rewrite the question into a ' +
-            'concise, self-contained search query (max 20 words) that captures the full intent. ' +
-            'If the question is already self-contained and requires no context from history, ' +
-            'return it UNCHANGED. Output ONLY the (possibly rewritten) query, no explanation.',
+            "You are a search query rewriter for a software team knowledge base. " +
+            "Given a conversation history and the latest question, rewrite the question into a " +
+            "concise, self-contained search query (max 20 words) that captures the full intent. " +
+            "If the question is already self-contained and requires no context from history, " +
+            "return it UNCHANGED. Output ONLY the (possibly rewritten) query, no explanation.",
         },
         {
-          role: 'user',
+          role: "user",
           content: `Conversation so far:\n${historyText}\n\nLatest question: ${message}\n\nRewritten search query:`,
         },
       ],
