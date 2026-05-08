@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS embeddings (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- processed_text: the clean text that was actually embedded (vs raw content).
+-- NULL means the raw title+content was used (pre-processing or irrelevant Slack).
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS processed_text TEXT;
+
 -- Add data_created_at column if upgrading from an older schema
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_date TIMESTAMPTZ;
 ALTER TABLE documents RENAME COLUMN source_date TO data_created_at;
