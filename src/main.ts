@@ -1,15 +1,15 @@
-import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { AppModule } from './app.module';
+import "reflect-metadata";
+import { NestFactory } from "@nestjs/core";
+import { ValidationPipe } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { AppModule } from "./app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService);
 
   app.enableCors({
-    origin: config.get<string>('FRONTEND_URL') ?? 'http://localhost:5173',
+    origin: config.get<string>("FRONTEND_URL") ?? "http://localhost:3002",
     credentials: true,
   });
 
@@ -21,9 +21,9 @@ async function bootstrap() {
     }),
   );
 
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix("api");
 
-  const port = config.get<number>('PORT') ?? 3000;
+  const port = config.get<number>("PORT") ?? 3002;
   await app.listen(port);
   console.log(`\n🚀 Backend running on http://localhost:${port}/api\n`);
 }

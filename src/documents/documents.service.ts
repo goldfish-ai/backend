@@ -76,20 +76,17 @@ export class DocumentsService {
     });
 
     // Process the document into clean text first, then embed that.
-    // For irrelevant Slack messages processDocument returns null — fall back
+    // For irrelevant content processDocument returns null — fall back
     // to embedding the raw title + content so the document is still saved.
-    // TODO: we will change this code — process document with AI before embedding
-    // const processed = await this.openai.processDocument({
-    //   title: dto.title ?? '',
-    //   content: dto.content,
-    //   source: dto.source ?? 'manual',
-    //   kind,
-    //   module,
-    //   author: dto.author ?? null,
-    // });
-    const processed = null;
+    const processed = await this.openai.processDocument({
+      title: dto.title ?? '',
+      content: dto.content,
+      source: dto.source ?? 'manual',
+      kind,
+      module,
+      author: dto.author ?? null,
+    });
 
-    // TODO: we will change this code — currently always embedding regardless of relevance
     const textToEmbed = processed ?? `${dto.title}\n\n${dto.content}`;
     const embedding = await this.openai.generateEmbedding(textToEmbed);
 
@@ -115,7 +112,7 @@ export class DocumentsService {
       );
       const doc = docRes.rows[0];
 
-      // TODO: we will change this code — currently always inserting into embeddings
+    // TODO: we will change this code — currently always inserting into embeddings
       await client.query(
         `INSERT INTO embeddings (document_id, project_id, embedding, model_name, processed_text)
          VALUES ($1, $2, $3::vector, $4, $5)`,
@@ -166,16 +163,14 @@ export class DocumentsService {
       metadata: dto.metadata,
     });
 
-    // TODO: we will change this code — process document with AI before embedding
-    // const processed = await this.openai.processDocument({
-    //   title,
-    //   content,
-    //   source,
-    //   kind,
-    //   module,
-    //   author: dto.author ?? null,
-    // });
-    const processed = null;
+    const processed = await this.openai.processDocument({
+      title,
+      content,
+      source,
+      kind,
+      module,
+      author: dto.author ?? null,
+    });
 
     // TODO: we will change this code — currently always embedding regardless of relevance
     const textToEmbed = processed ?? `${title}\n\n${content}`;
@@ -238,20 +233,18 @@ export class DocumentsService {
       };
     });
 
-    // TODO: we will change this code — process documents with AI before embedding
-    // const processedTexts = await Promise.all(
-    //   items.map((i) =>
-    //     this.openai.processDocument({
-    //       title: i.title,
-    //       content: i.content,
-    //       source: i.source,
-    //       kind: i.kind,
-    //       module: i.module,
-    //       author: i.author,
-    //     }),
-    //   ),
-    // );
-    const processedTexts = items.map(() => null);
+    const processedTexts = await Promise.all(
+      items.map((i) =>
+        this.openai.processDocument({
+          title: i.title,
+          content: i.content,
+          source: i.source,
+          kind: i.kind,
+          module: i.module,
+          author: i.author,
+        }),
+      ),
+    );
 
     const textsToEmbed = items.map(
       (i, idx) => processedTexts[idx] ?? `${i.title}\n\n${i.content}`,
@@ -259,7 +252,6 @@ export class DocumentsService {
 
     // TODO: we will change this code — currently embedding all items regardless of relevance
     const embeddings = await this.openai.generateEmbeddings(textsToEmbed);
-
     const client = await this.db.getPool().connect();
     try {
       await client.query('BEGIN');

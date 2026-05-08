@@ -1,0 +1,895 @@
+{
+  "info": {
+    "name": "Goldfish Backend",
+    "description": "Project Memory — RAG-powered knowledge engine for software teams.\nBase URL: http://localhost:3002/api\n\nSet the `baseUrl`, `token`, and `projectId` collection variables before use.\n\nWorkflow:\n1. Register or Login → token is saved automatically\n2. Create a Project → projectId is saved automatically\n3. Use any project-scoped endpoint",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3002/api", "type": "string" },
+    { "key": "token", "value": "", "type": "string", "description": "JWT token — auto-saved after login/register" },
+    { "key": "projectId", "value": "1", "type": "string", "description": "Active project ID — auto-saved after project create" },
+    { "key": "sessionId", "value": "1", "type": "string", "description": "Chat session ID — auto-saved after session create" },
+    { "key": "documentId", "value": "1", "type": "string", "description": "Document ID — auto-saved after document create" },
+    { "key": "messageId", "value": "1", "type": "string", "description": "Message ID — auto-saved after message send" },
+    { "key": "userId", "value": "1", "type": "string", "description": "User ID for member management" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Liveness probe. No auth required."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.token) { pm.collectionVariables.set('token', json.token); }",
+                  "if (json && json.user && json.user.id) { pm.collectionVariables.set('userId', String(json.user.id)); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dev@example.com\",\n  \"password\": \"password123\",\n  \"name\": \"Dev User\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "description": "Create a new user account. Saves JWT token to collection variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.token) { pm.collectionVariables.set('token', json.token); }",
+                  "if (json && json.user && json.user.id) { pm.collectionVariables.set('userId', String(json.user.id)); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dev@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "Login and receive a JWT. Saves token to collection variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Me (Current User)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] },
+            "description": "Returns the currently authenticated user from the JWT payload. Requires Bearer token."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "Create Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.id) { pm.collectionVariables.set('projectId', String(json.id)); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Project\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] },
+            "description": "Create a new project. Saves projectId to collection variable."
+          },
+          "response": []
+        },
+        {
+          "name": "List My Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] },
+            "description": "Returns all projects the authenticated user is a member of."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}"] },
+            "description": "Get a single project by ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Project",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Renamed Project\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}"] },
+            "description": "Update project name."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Project",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}"] },
+            "description": "Delete a project. Returns { success: true } with HTTP 200."
+          },
+          "response": []
+        },
+        {
+          "name": "List Members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/members", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "members"] },
+            "description": "List all members of a project."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Member",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{userId}}\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/members", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "members"] },
+            "description": "Add a user to a project by userId."
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/members/{{userId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "members", "{{userId}}"] },
+            "description": "Remove a user from a project. Returns { success: true } with HTTP 200."
+          },
+          "response": []
+        },
+        {
+          "name": "List Integrations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations"] },
+            "description": "Get all integration configs for a project."
+          },
+          "response": []
+        },
+        {
+          "name": "Upsert Integration",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"config\": {\n    \"token\": \"xoxb-your-slack-token\",\n    \"defaultChannel\": \"C123456\"\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/slack", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "slack"] },
+            "description": "Create or update integration config. Replace 'slack' with 'github' or 'notion' as needed. `config` is arbitrary JSON."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Integration",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/slack", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "slack"] },
+            "description": "Remove an integration config. Replace 'slack' with 'github' or 'notion' as needed."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Create Document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.id) { pm.collectionVariables.set('documentId', String(json.id)); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Architecture Decision Record\",\n  \"content\": \"We decided to use PostgreSQL with pgvector for semantic search because...\",\n  \"source\": \"manual\",\n  \"author\": \"alice\",\n  \"module\": \"infrastructure\",\n  \"kind\": \"decision\",\n  \"decision_type\": \"architecture\",\n  \"metadata\": { \"tags\": [\"database\", \"search\"] },\n  \"dataCreatedAt\": \"2024-01-15T10:00:00Z\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/documents", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "documents"] },
+            "description": "Create a document and embed it. Saves documentId to collection variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Seed Document",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"My Document Title\\n\\nThis is the full content of the document. The first line becomes the title if no title is provided.\",\n  \"title\": \"My Document Title\",\n  \"source\": \"import\",\n  \"author\": \"bob\",\n  \"metadata\": { \"imported\": true }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/documents/seed", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "documents", "seed"] },
+            "description": "Seed a document from raw text. First line is used as title if `title` not provided."
+          },
+          "response": []
+        },
+        {
+          "name": "Seed Bulk Documents",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documents\": [\n    {\n      \"text\": \"First Document\\n\\nContent of the first document.\",\n      \"title\": \"First Document\",\n      \"source\": \"bulk-import\",\n      \"author\": \"alice\"\n    },\n    {\n      \"text\": \"Second Document\\n\\nContent of the second document.\",\n      \"title\": \"Second Document\",\n      \"source\": \"bulk-import\",\n      \"author\": \"bob\"\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/documents/seed/bulk", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "documents", "seed", "bulk"] },
+            "description": "Seed multiple documents in one call. Each item follows the SeedDocumentDto shape."
+          },
+          "response": []
+        },
+        {
+          "name": "List Documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/documents", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "documents"] },
+            "description": "List all documents in the project."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Document",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/documents/{{documentId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "documents", "{{documentId}}"] },
+            "description": "Get a single document by ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Document",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/documents/{{documentId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "documents", "{{documentId}}"] },
+            "description": "Delete a document and its embeddings."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Semantic Search",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"Why did we choose PostgreSQL?\",\n  \"limit\": 5,\n  \"threshold\": 0.2\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/search", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "search"] },
+            "description": "Semantic (vector) search over all embedded documents. `limit` 1–50 (default 5). `threshold` 0–1 cosine similarity cutoff (default 0.2)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Summary",
+      "item": [
+        {
+          "name": "Summarize Document by ID",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentId\": {{documentId}},\n  \"maxWords\": 150\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/summary", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "summary"] },
+            "description": "Generate an AI summary of a saved document by its ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Summarize Raw Text",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"This is a long piece of text that you want summarized. It can be anything — meeting notes, a PR description, a Slack thread, etc.\",\n  \"maxWords\": 100\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/summary", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "summary"] },
+            "description": "Generate an AI summary of arbitrary raw text (no document ID needed)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Create Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.id) { pm.collectionVariables.set('sessionId', String(json.id)); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Architecture Q&A\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions"] },
+            "description": "Create a new chat session. Saves sessionId to collection variable."
+          },
+          "response": []
+        },
+        {
+          "name": "List Sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions"] },
+            "description": "List all chat sessions for the project."
+          },
+          "response": []
+        },
+        {
+          "name": "List Sessions (v2)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions/list", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions", "list"] },
+            "description": "Alternative endpoint to list all chat sessions (same data, different path)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Session",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions/{{sessionId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions", "{{sessionId}}"] },
+            "description": "Delete a chat session and all its messages."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions/{{sessionId}}/history", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions", "{{sessionId}}", "history"] },
+            "description": "Get the full message history of a chat session."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session Messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions", "{{sessionId}}", "messages"] },
+            "description": "Get all messages in a chat session (alternative to /history)."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.id) { pm.collectionVariables.set('messageId', String(json.id)); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Why did we choose PostgreSQL over MongoDB?\",\n  \"limit\": 5,\n  \"threshold\": 0.15,\n  \"mode\": \"qa\",\n  \"filters\": {\n    \"sources\": [\"github\", \"notion\"],\n    \"modules\": [\"infrastructure\"],\n    \"authors\": [\"alice\"],\n    \"kinds\": [\"decision\"],\n    \"dateFrom\": \"2024-01-01\",\n    \"dateTo\": \"2024-12-31\"\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions", "{{sessionId}}", "messages"] },
+            "description": "Send a message to the AI in a chat session. `mode` options: `qa` (default), `decision`, `onboarding`, `history`. All filters are optional. Saves messageId."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message (Decision Mode)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"What were the key decisions made about the payment system?\",\n  \"limit\": 10,\n  \"threshold\": 0.15,\n  \"mode\": \"decision\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions", "{{sessionId}}", "messages"] },
+            "description": "Chat in 'decision' mode — surfaces architectural decisions from project memory."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message (Onboarding Mode)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"I am a new engineer. Give me an overview of this project.\",\n  \"limit\": 10,\n  \"threshold\": 0.15,\n  \"mode\": \"onboarding\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions", "{{sessionId}}", "messages"] },
+            "description": "Chat in 'onboarding' mode — tailored for new team members learning the project."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message (History Mode)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"What happened with the auth system in Q1 2024?\",\n  \"limit\": 10,\n  \"threshold\": 0.15,\n  \"mode\": \"history\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "chat", "sessions", "{{sessionId}}", "messages"] },
+            "description": "Chat in 'history' mode — surfaces historical context and timeline information."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Message Source",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/chat/sessions/{{sessionId}}/messages/{{messageId}}/sources/0",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "chat", "sessions", "{{sessionId}}", "messages", "{{messageId}}", "sources", "0"]
+            },
+            "description": "Get a specific source document used to generate a message. The last path segment is the 0-based source index."
+          },
+          "response": []
+        },
+        {
+          "name": "Timeline",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/chat/timeline?limit=20&offset=0&modules=infrastructure&sources=github,notion&kinds=decision&authors=alice&dateFrom=2024-01-01&dateTo=2024-12-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "chat", "timeline"],
+              "query": [
+                { "key": "limit", "value": "20", "description": "Max items to return" },
+                { "key": "offset", "value": "0", "description": "Pagination offset" },
+                { "key": "modules", "value": "infrastructure", "description": "Comma-separated module names" },
+                { "key": "sources", "value": "github,notion", "description": "Comma-separated source names" },
+                { "key": "kinds", "value": "decision", "description": "Comma-separated kind values" },
+                { "key": "authors", "value": "alice", "description": "Comma-separated author names" },
+                { "key": "dateFrom", "value": "2024-01-01", "description": "ISO date range start" },
+                { "key": "dateTo", "value": "2024-12-31", "description": "ISO date range end" }
+              ]
+            },
+            "description": "Browse the project knowledge timeline with optional filters. All query params are optional."
+          },
+          "response": []
+        },
+        {
+          "name": "Experts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/chat/experts?topic=authentication&modules=backend&sources=github&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "chat", "experts"],
+              "query": [
+                { "key": "topic", "value": "authentication", "description": "Required — topic to find experts for" },
+                { "key": "modules", "value": "backend", "description": "Optional — comma-separated module filter" },
+                { "key": "sources", "value": "github", "description": "Optional — comma-separated source filter" },
+                { "key": "limit", "value": "5", "description": "Optional — max number of experts to return" }
+              ]
+            },
+            "description": "Find the team members with the most knowledge on a given topic. `topic` is required."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Integrations",
+      "item": [
+        {
+          "name": "Slack",
+          "item": [
+            {
+              "name": "Ingest Slack Channel",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"channelId\": \"C0123456789\",\n  \"limit\": 200,\n  \"token\": \"xoxb-your-slack-bot-token\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/slack/ingest", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "slack", "ingest"] },
+                "description": "Fetch and ingest messages from a Slack channel. `limit` 1–1000 (default 200). `token` is optional — overrides the server-side SLACK_TOKEN env var."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "GitHub",
+          "item": [
+            {
+              "name": "Ingest GitHub Repo (All)",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"owner\": \"my-org\",\n  \"repo\": \"my-repo\",\n  \"type\": \"all\",\n  \"state\": \"all\",\n  \"token\": \"ghp_yourGithubToken\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/github/ingest", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "github", "ingest"] },
+                "description": "Ingest all data (commits, PRs, issues, files) from a GitHub repository. `type` options: `commits`, `pulls`, `issues`, `files`, `all` (default). `token` overrides GITHUB_TOKEN env var."
+              },
+              "response": []
+            },
+            {
+              "name": "Ingest GitHub Commits",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"owner\": \"my-org\",\n  \"repo\": \"my-repo\",\n  \"type\": \"commits\",\n  \"limit\": 50,\n  \"branch\": \"main\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/github/ingest", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "github", "ingest"] },
+                "description": "Ingest only commits from a GitHub repo. Use `branch` to target a specific branch/tag/SHA."
+              },
+              "response": []
+            },
+            {
+              "name": "Ingest GitHub Pull Requests",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"owner\": \"my-org\",\n  \"repo\": \"my-repo\",\n  \"type\": \"pulls\",\n  \"state\": \"closed\",\n  \"limit\": 100\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/github/ingest", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "github", "ingest"] },
+                "description": "Ingest pull requests. `state`: `open`, `closed`, `all` (default)."
+              },
+              "response": []
+            },
+            {
+              "name": "Ingest GitHub Issues",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"owner\": \"my-org\",\n  \"repo\": \"my-repo\",\n  \"type\": \"issues\",\n  \"state\": \"all\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/github/ingest", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "github", "ingest"] },
+                "description": "Ingest GitHub issues from a repository."
+              },
+              "response": []
+            },
+            {
+              "name": "Ingest GitHub Files",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"owner\": \"my-org\",\n  \"repo\": \"my-repo\",\n  \"type\": \"files\",\n  \"filePaths\": [\"README.md\", \"docs/architecture.md\", \"CONTRIBUTING.md\"]\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/github/ingest", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "github", "ingest"] },
+                "description": "Ingest specific files from a GitHub repo by path."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Notion",
+          "item": [
+            {
+              "name": "Ingest Notion Database",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"databaseId\": \"your-notion-database-id\",\n  \"token\": \"secret_yourNotionIntegrationToken\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/notion/ingest", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "notion", "ingest"] },
+                "description": "Ingest all pages from a Notion database. `token` overrides NOTION_TOKEN env var."
+              },
+              "response": []
+            },
+            {
+              "name": "Ingest Notion Page",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pageId\": \"your-notion-page-id\",\n  \"token\": \"secret_yourNotionIntegrationToken\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/notion/ingest", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "notion", "ingest"] },
+                "description": "Ingest a single Notion page by ID."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Meetings",
+          "item": [
+            {
+              "name": "Ingest Meeting Transcript",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Sprint Planning — Week 12\",\n  \"date\": \"2024-03-18T09:00:00Z\",\n  \"duration\": \"45m\",\n  \"transcript\": [\n    {\n      \"speaker\": \"Alice\",\n      \"timestamp\": \"2024-03-18T09:00:00Z\",\n      \"text\": [\"Good morning everyone.\", \"Let's go over the sprint goals.\"]\n    },\n    {\n      \"speaker\": \"Bob\",\n      \"timestamp\": \"2024-03-18T09:02:30Z\",\n      \"text\": [\"I think we should prioritize the auth module this sprint.\"]\n    }\n  ]\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/integrations/meetings/ingest", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "integrations", "meetings", "ingest"] },
+                "description": "Ingest a structured meeting transcript. Each transcript entry has a speaker, timestamp, and array of text lines."
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Webhooks (Project-scoped)",
+      "description": "Authenticated, project-scoped webhook endpoints. Require Bearer JWT + project membership.",
+      "item": [
+        {
+          "name": "GitHub Webhook (Project)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-github-event", "value": "push", "description": "GitHub event type: push, pull_request, issue_comment" },
+              { "key": "x-hub-signature-256", "value": "sha256=yoursignature", "description": "HMAC-SHA256 of the raw body using your webhook secret" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ref\": \"refs/heads/main\",\n  \"repository\": { \"full_name\": \"my-org/my-repo\" },\n  \"commits\": [\n    {\n      \"id\": \"abc123\",\n      \"message\": \"Fix auth bug\",\n      \"author\": { \"name\": \"alice\" },\n      \"timestamp\": \"2024-03-18T10:00:00Z\"\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/webhooks/github", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "webhooks", "github"] },
+            "description": "Receive GitHub webhook events for a project. Handles: push, pull_request (opened/closed/synchronize), issue_comment (created)."
+          },
+          "response": []
+        },
+        {
+          "name": "Slack Webhook (Project)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-slack-request-timestamp", "value": "1710758400", "description": "Unix timestamp from Slack" },
+              { "key": "x-slack-signature", "value": "v0=yoursignature", "description": "Slack signing secret HMAC" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"event_callback\",\n  \"event\": {\n    \"type\": \"message\",\n    \"channel\": \"C0123456789\",\n    \"user\": \"U0123456789\",\n    \"text\": \"Hey team, we decided to use Redis for caching.\",\n    \"ts\": \"1710758400.000100\"\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/webhooks/slack", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "webhooks", "slack"] },
+            "description": "Receive Slack Events API callbacks for a project. Also handles URL verification challenge."
+          },
+          "response": []
+        },
+        {
+          "name": "Notion Poll (Project)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/webhooks/notion/poll", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "webhooks", "notion", "poll"] },
+            "description": "Trigger a Notion poll for new/updated pages in the project's connected Notion workspace. No request body needed."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhooks (Legacy — No Auth)",
+      "description": "Legacy unauthenticated webhook shim endpoints. These do not require a Bearer token and are intended for direct webhook registration with GitHub/Slack/Notion.",
+      "item": [
+        {
+          "name": "GitHub Webhook (Legacy)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-github-event", "value": "push" },
+              { "key": "x-hub-signature-256", "value": "sha256=yoursignature" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ref\": \"refs/heads/main\",\n  \"repository\": { \"full_name\": \"my-org/my-repo\" },\n  \"commits\": [\n    {\n      \"id\": \"abc123\",\n      \"message\": \"Fix auth bug\",\n      \"author\": { \"name\": \"alice\" },\n      \"timestamp\": \"2024-03-18T10:00:00Z\"\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/webhooks/github", "host": ["{{baseUrl}}"], "path": ["webhooks", "github"] },
+            "description": "Legacy unauthenticated GitHub webhook. No JWT required."
+          },
+          "response": []
+        },
+        {
+          "name": "Slack Webhook (Legacy)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-slack-request-timestamp", "value": "1710758400" },
+              { "key": "x-slack-signature", "value": "v0=yoursignature" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"url_verification\",\n  \"challenge\": \"3eZbrw1aBm2rZgRNFdxV2595E9CY3gmdALWMmHkvFXO7tYXAYM8P\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/webhooks/slack", "host": ["{{baseUrl}}"], "path": ["webhooks", "slack"] },
+            "description": "Legacy unauthenticated Slack webhook. Also handles URL verification challenge."
+          },
+          "response": []
+        },
+        {
+          "name": "Notion Poll (Legacy)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/webhooks/notion/poll", "host": ["{{baseUrl}}"], "path": ["webhooks", "notion", "poll"] },
+            "description": "Legacy unauthenticated Notion poll trigger."
+          },
+          "response": []
+        },
+        {
+          "name": "Slack Events (Legacy /slack/events)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-slack-request-timestamp", "value": "1710758400" },
+              { "key": "x-slack-signature", "value": "v0=yoursignature" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"event_callback\",\n  \"event\": {\n    \"type\": \"message\",\n    \"channel\": \"C0123456789\",\n    \"text\": \"Let's use Redis for caching.\",\n    \"ts\": \"1710758400.000100\"\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/slack/events", "host": ["{{baseUrl}}"], "path": ["slack", "events"] },
+            "description": "Dedicated legacy Slack events endpoint at /api/slack/events. No auth required."
+          },
+          "response": []
+        },
+        {
+          "name": "GitHub Events (Legacy /github/events)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-github-event", "value": "push" },
+              { "key": "x-hub-signature-256", "value": "sha256=yoursignature" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ref\": \"refs/heads/main\",\n  \"repository\": { \"full_name\": \"my-org/my-repo\" },\n  \"commits\": []\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/github/events", "host": ["{{baseUrl}}"], "path": ["github", "events"] },
+            "description": "Dedicated legacy GitHub events endpoint at /api/github/events. No auth required."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

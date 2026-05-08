@@ -242,17 +242,17 @@ erDiagram
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Framework | NestJS 10 (TypeScript) |
-| Database | PostgreSQL + `pgvector` extension |
+| Layer           | Technology                                                  |
+| --------------- | ----------------------------------------------------------- |
+| Framework       | NestJS 10 (TypeScript)                                      |
+| Database        | PostgreSQL + `pgvector` extension                           |
 | AI / Embeddings | OpenAI `gpt-4o-mini` + `text-embedding-3-small` (1536 dims) |
-| Auth | JWT (Passport) + bcryptjs |
-| Scheduled Jobs | `@nestjs/schedule` (node-cron) |
-| HTTP Client | axios |
-| Validation | `class-validator` / `class-transformer` |
+| Auth            | JWT (Passport) + bcryptjs                                   |
+| Scheduled Jobs  | `@nestjs/schedule` (node-cron)                              |
+| HTTP Client     | axios                                                       |
+| Validation      | `class-validator` / `class-transformer`                     |
 
-**Base URL:** `http://localhost:3000/api`
+**Base URL:** `http://localhost:3002/api`
 
 ---
 
@@ -353,6 +353,7 @@ src/
 ## Database Schema
 
 ### `documents` — Primary knowledge store
+
 ```sql
 id              SERIAL PRIMARY KEY
 title           VARCHAR(500) NOT NULL
@@ -370,6 +371,7 @@ updated_at      TIMESTAMPTZ DEFAULT NOW()
 ```
 
 ### `embeddings` — Vector index
+
 ```sql
 id             SERIAL PRIMARY KEY
 document_id    INTEGER FK → documents(id) ON DELETE CASCADE
@@ -381,6 +383,7 @@ created_at     TIMESTAMPTZ DEFAULT NOW()
 ```
 
 ### `users`
+
 ```sql
 id            SERIAL PRIMARY KEY
 email         VARCHAR(255) UNIQUE NOT NULL
@@ -390,6 +393,7 @@ created_at    TIMESTAMPTZ DEFAULT NOW()
 ```
 
 ### `chat_sessions`
+
 ```sql
 id         SERIAL PRIMARY KEY
 user_id    INTEGER FK → users(id) CASCADE
@@ -399,6 +403,7 @@ updated_at TIMESTAMPTZ DEFAULT NOW()
 ```
 
 ### `chat_messages`
+
 ```sql
 id         SERIAL PRIMARY KEY
 session_id INTEGER FK → chat_sessions(id) CASCADE
@@ -409,6 +414,7 @@ created_at TIMESTAMPTZ DEFAULT NOW()
 ```
 
 ### `meta` — Key-value polling state
+
 ```sql
 key   VARCHAR(255) PRIMARY KEY
 value TEXT NOT NULL
@@ -416,65 +422,72 @@ value TEXT NOT NULL
 ```
 
 ### Key Indexes
-| Index | Type | Purpose |
-|---|---|---|
-| `idx_embeddings_vector` | IVFFlat cosine (lists=100) | ANN vector search |
-| `idx_documents_metadata_gin` | GIN on JSONB | Fast `->>'key'` queries |
-| `idx_documents_module/kind/author` | B-tree | Filtered search |
-| `idx_documents_created_at` | B-tree DESC | Timeline ordering |
+
+| Index                              | Type                       | Purpose                 |
+| ---------------------------------- | -------------------------- | ----------------------- |
+| `idx_embeddings_vector`            | IVFFlat cosine (lists=100) | ANN vector search       |
+| `idx_documents_metadata_gin`       | GIN on JSONB               | Fast `->>'key'` queries |
+| `idx_documents_module/kind/author` | B-tree                     | Filtered search         |
+| `idx_documents_created_at`         | B-tree DESC                | Timeline ordering       |
 
 ---
 
 ## API Endpoints
 
 ### Auth
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| POST | `/api/auth/register` | — | Register → `{ user, token }` |
-| POST | `/api/auth/login` | — | Login → `{ user, token }` |
-| GET | `/api/auth/me` | JWT | Current user |
+
+| Method | Path                 | Auth | Description                  |
+| ------ | -------------------- | ---- | ---------------------------- |
+| POST   | `/api/auth/register` | —    | Register → `{ user, token }` |
+| POST   | `/api/auth/login`    | —    | Login → `{ user, token }`    |
+| GET    | `/api/auth/me`       | JWT  | Current user                 |
 
 ### Documents
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| POST | `/api/documents` | — | Create + embed document |
-| POST | `/api/documents/seed` | — | Seed from raw text |
-| POST | `/api/documents/seed/bulk` | — | Bulk seed array |
-| GET | `/api/documents` | — | List (limit 50) |
-| GET | `/api/documents/:id` | — | Single document |
-| DELETE | `/api/documents/:id` | — | Delete (cascades embeddings) |
+
+| Method | Path                       | Auth | Description                  |
+| ------ | -------------------------- | ---- | ---------------------------- |
+| POST   | `/api/documents`           | —    | Create + embed document      |
+| POST   | `/api/documents/seed`      | —    | Seed from raw text           |
+| POST   | `/api/documents/seed/bulk` | —    | Bulk seed array              |
+| GET    | `/api/documents`           | —    | List (limit 50)              |
+| GET    | `/api/documents/:id`       | —    | Single document              |
+| DELETE | `/api/documents/:id`       | —    | Delete (cascades embeddings) |
 
 ### Search
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| POST | `/api/search` | — | `{ query, limit?, threshold? }` → `{ results[] }` |
+
+| Method | Path          | Auth | Description                                       |
+| ------ | ------------- | ---- | ------------------------------------------------- |
+| POST   | `/api/search` | —    | `{ query, limit?, threshold? }` → `{ results[] }` |
 
 ### Chat — All JWT protected
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/chat/sessions` | Create session |
-| GET | `/api/chat/sessions/list` | Sidebar list (count + HTML-stripped preview) |
-| GET | `/api/chat/sessions/:id/history` | Paired turn-by-turn history |
-| POST | `/api/chat/sessions/:id/messages` | **Main chat pipeline** |
-| DELETE | `/api/chat/sessions/:id` | Delete session |
-| GET | `/api/chat/sessions/:sid/messages/:mid/sources/:idx` | Expand citation to full thread/PR |
-| GET | `/api/chat/timeline` | Chronological event feed with facets |
-| GET | `/api/chat/experts?topic=` | Expert finder (author ranking) |
+
+| Method | Path                                                 | Description                                  |
+| ------ | ---------------------------------------------------- | -------------------------------------------- |
+| POST   | `/api/chat/sessions`                                 | Create session                               |
+| GET    | `/api/chat/sessions/list`                            | Sidebar list (count + HTML-stripped preview) |
+| GET    | `/api/chat/sessions/:id/history`                     | Paired turn-by-turn history                  |
+| POST   | `/api/chat/sessions/:id/messages`                    | **Main chat pipeline**                       |
+| DELETE | `/api/chat/sessions/:id`                             | Delete session                               |
+| GET    | `/api/chat/sessions/:sid/messages/:mid/sources/:idx` | Expand citation to full thread/PR            |
+| GET    | `/api/chat/timeline`                                 | Chronological event feed with facets         |
+| GET    | `/api/chat/experts?topic=`                           | Expert finder (author ranking)               |
 
 ### Integrations (bulk ingest, no auth)
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/integrations/slack/ingest` | Ingest Slack channel history |
-| POST | `/api/integrations/github/ingest` | Ingest GitHub commits/PRs/issues/files |
-| POST | `/api/integrations/notion/ingest` | Ingest Notion database or page |
-| POST | `/api/integrations/meetings/ingest` | Ingest meeting transcripts |
+
+| Method | Path                                | Description                            |
+| ------ | ----------------------------------- | -------------------------------------- |
+| POST   | `/api/integrations/slack/ingest`    | Ingest Slack channel history           |
+| POST   | `/api/integrations/github/ingest`   | Ingest GitHub commits/PRs/issues/files |
+| POST   | `/api/integrations/notion/ingest`   | Ingest Notion database or page         |
+| POST   | `/api/integrations/meetings/ingest` | Ingest meeting transcripts             |
 
 ### Webhooks (signature-verified, no auth)
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/github/events` | GitHub push / PR / issue_comment events |
-| POST | `/api/slack/events` | Slack Events API (message + url_verification) |
-| POST | `/api/webhooks/notion/poll` | Manual Notion poll trigger |
+
+| Method | Path                        | Description                                   |
+| ------ | --------------------------- | --------------------------------------------- |
+| POST   | `/api/github/events`        | GitHub push / PR / issue_comment events       |
+| POST   | `/api/slack/events`         | Slack Events API (message + url_verification) |
+| POST   | `/api/webhooks/notion/poll` | Manual Notion poll trigger                    |
 
 ---
 
@@ -602,26 +615,28 @@ Protected routes (chat only):
 
 ## OpenAI Service Functions
 
-| Function | Model | Purpose |
-|---|---|---|
-| `generateEmbedding(text)` | `text-embedding-3-small` | Single text → 1536-dim vector |
-| `generateEmbeddings(texts[])` | `text-embedding-3-small` | Batch embed (one API call) |
-| `chatWithContext(msg, ctx, history, mode)` | `gpt-4o-mini` | RAG answer as HTML fragment |
-| `rewriteQuery(message, history)` | `gpt-4o-mini` | Rewrite vague follow-ups into self-contained queries |
-| `summarize(text)` | `gpt-4o-mini` | Summarize a document or raw text |
-| `processDocument(doc)` | `gpt-4o-mini` | Relevance check + semantic distillation *(currently disabled — TODO)* |
+| Function                                   | Model                    | Purpose                                                               |
+| ------------------------------------------ | ------------------------ | --------------------------------------------------------------------- |
+| `generateEmbedding(text)`                  | `text-embedding-3-small` | Single text → 1536-dim vector                                         |
+| `generateEmbeddings(texts[])`              | `text-embedding-3-small` | Batch embed (one API call)                                            |
+| `chatWithContext(msg, ctx, history, mode)` | `gpt-4o-mini`            | RAG answer as HTML fragment                                           |
+| `rewriteQuery(message, history)`           | `gpt-4o-mini`            | Rewrite vague follow-ups into self-contained queries                  |
+| `summarize(text)`                          | `gpt-4o-mini`            | Summarize a document or raw text                                      |
+| `processDocument(doc)`                     | `gpt-4o-mini`            | Relevance check + semantic distillation _(currently disabled — TODO)_ |
 
 ---
 
 ## Webhook Security
 
 ### GitHub
+
 - **Verification:** HMAC-SHA256 of raw request body using `GITHUB_WEBHOOK_SECRET`
 - **Header:** `x-hub-signature-256: sha256=<hex>`
 - **Handled events:** `push` (commits + diffs), `pull_request` (opened/closed/sync + diff), `issue_comment` (created)
 - **Response pattern:** 200 OK immediately, process async (within GitHub's 10s window)
 
 ### Slack
+
 - **Verification:** HMAC-SHA256 of `v0:{timestamp}:{raw_body}` using `SLACK_SIGNING_SECRET`
 - **Replay protection:** reject if `|now - timestamp| > 300s`
 - **Handled events:** `url_verification` (challenge response), `message` (ignores bots, edits, subtypes)
@@ -633,16 +648,16 @@ Protected routes (chat only):
 
 Every document is automatically tagged with `module`, `kind`, and optionally `decision_type`:
 
-| `source` | `kind` values |
-|---|---|
-| `github` (commit) | `code` |
-| `github` (PR) | `pr` |
-| `github` (issue) | `issue` |
-| `slack` (thread) | `thread` |
-| `slack` (message) | `message` |
-| `notion` | `doc` |
-| any (title has ADR/RFC/decision) | `decision` |
-| default | `note` |
+| `source`                         | `kind` values |
+| -------------------------------- | ------------- |
+| `github` (commit)                | `code`        |
+| `github` (PR)                    | `pr`          |
+| `github` (issue)                 | `issue`       |
+| `slack` (thread)                 | `thread`      |
+| `slack` (message)                | `message`     |
+| `notion`                         | `doc`         |
+| any (title has ADR/RFC/decision) | `decision`    |
+| default                          | `note`        |
 
 `module` is derived from: `metadata.repo` → `metadata.channel` → `metadata.database_id` → `null`
 
@@ -650,12 +665,12 @@ Every document is automatically tagged with `module`, `kind`, and optionally `de
 
 ## Chat Modes
 
-| Mode | Auto-trigger keywords | What the LLM does |
-|---|---|---|
-| `qa` | *(default)* | Standard RAG answer with `[Source N]` citations |
-| `decision` | "why did we", "decision", "trade-off", "alternatives", "concerns raised" | Decision archaeology: what/when/who decided, alternatives considered, dissent quoted, trade-offs listed |
-| `onboarding` | "how does", "how do I", "walk me through", "where is", "onboard" | Concrete explanation with file paths, function names, data flow steps |
-| `history` | "has anyone", "ever seen", "previously", "in the past" | Chronological list of prior occurrences grouped by date |
+| Mode         | Auto-trigger keywords                                                    | What the LLM does                                                                                       |
+| ------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `qa`         | _(default)_                                                              | Standard RAG answer with `[Source N]` citations                                                         |
+| `decision`   | "why did we", "decision", "trade-off", "alternatives", "concerns raised" | Decision archaeology: what/when/who decided, alternatives considered, dissent quoted, trade-offs listed |
+| `onboarding` | "how does", "how do I", "walk me through", "where is", "onboard"         | Concrete explanation with file paths, function names, data flow steps                                   |
+| `history`    | "has anyone", "ever seen", "previously", "in the past"                   | Chronological list of prior occurrences grouped by date                                                 |
 
 Mode can be forced by passing `mode` in the request body.
 
@@ -666,6 +681,7 @@ Mode can be forced by passing `mode` in the request body.
 Ranks team members by combined semantic relevance and recency on a topic.
 
 **Score formula:**
+
 ```
 score(author) = Σ [ similarity(doc) × e^( -ln2 × doc_age_ms / 180_days ) ]
                   over top-50 semantic matches
@@ -702,7 +718,7 @@ OPENAI_API_KEY          OpenAI API key
 JWT_SECRET              JWT signing secret (default: 'changeme')
 
 # Optional
-PORT                    Server port (default: 3000)
+PORT                    Server port (default: 3002)
 FRONTEND_URL            CORS origin (default: 'http://localhost:5173')
 
 # Integrations (can also be passed per-request in body)

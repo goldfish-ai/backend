@@ -6,15 +6,15 @@
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Framework | NestJS 10 (TypeScript) |
-| Database | PostgreSQL + `pgvector` extension |
+| Layer           | Technology                                      |
+| --------------- | ----------------------------------------------- |
+| Framework       | NestJS 10 (TypeScript)                          |
+| Database        | PostgreSQL + `pgvector` extension               |
 | AI / Embeddings | OpenAI `text-embedding-3-small` + `gpt-4o-mini` |
-| Auth | JWT (Passport) + bcryptjs |
-| Scheduled Jobs | `@nestjs/schedule` (cron) |
-| HTTP Client | axios |
-| Validation | `class-validator` / `class-transformer` |
+| Auth            | JWT (Passport) + bcryptjs                       |
+| Scheduled Jobs  | `@nestjs/schedule` (cron)                       |
+| HTTP Client     | axios                                           |
+| Validation      | `class-validator` / `class-transformer`         |
 
 ---
 
@@ -23,12 +23,12 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Client / Frontend                        │
-│                    (http://localhost:5173)                       │
+│                    (http://localhost:3002)                       │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ REST  (Bearer JWT)
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   NestJS API  :3000/api                         │
+│                   NestJS API  :3002/api                         │
 │                                                                  │
 │  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌───────────────┐  │
 │  │   Auth   │  │  Chat    │  │ Documents │  │  Integrations │  │
@@ -205,6 +205,7 @@ Return { userMessage, assistantMessage, mode }
 ## Ingest Workflows
 
 ### Manual / Seed
+
 ```
 POST /documents/seed  →  DocumentsService.create()
                       →  OpenAI.processDocument()   (clean & distil text)
@@ -213,6 +214,7 @@ POST /documents/seed  →  DocumentsService.create()
 ```
 
 ### Meetings
+
 ```
 POST /integrations/meetings/ingest
   Per transcript entry → documents.create() → embed & store
@@ -220,6 +222,7 @@ POST /integrations/meetings/ingest
 ```
 
 ### GitHub (bulk ingest)
+
 ```
 POST /integrations/github/ingest  { owner, repo, type, limit, state }
   Fetches from GitHub REST API → commits / pulls / issues
@@ -228,12 +231,14 @@ POST /integrations/github/ingest  { owner, repo, type, limit, state }
 ```
 
 ### GitHub (live events)
+
 ```
 POST /github/events  X-GitHub-Event: push | pull_request | issue_comment
   GithubWebhookService → documents.create() per commit/PR/comment
 ```
 
 ### Slack (bulk ingest)
+
 ```
 POST /integrations/slack/ingest  { channelId, limit }
   Fetches channel history via Slack Web API
@@ -242,12 +247,14 @@ POST /integrations/slack/ingest  { channelId, limit }
 ```
 
 ### Slack (live events)
+
 ```
 POST /slack/events  { type: "event_callback", event: { type: "message", ... } }
   SlackWebhookService → documents.create() per message
 ```
 
 ### Notion (bulk ingest)
+
 ```
 POST /integrations/notion/ingest  { databaseId | pageId }
   NotionService fetches pages → documents.create()
@@ -255,6 +262,7 @@ POST /integrations/notion/ingest  { databaseId | pageId }
 ```
 
 ### Notion (scheduled poll)
+
 ```
 Cron every 30 minutes → NotionPollService.pollAll()
   Reads NOTION_POLL_DATABASES env var (comma-separated database IDs)
@@ -268,12 +276,12 @@ Cron every 30 minutes → NotionPollService.pollAll()
 
 Every stored document is tagged with `source`, `module`, and `kind`:
 
-| `source` | `kind` values |
-|---|---|
-| `meeting` | `note` |
-| `github` | `code` (commit), `pr`, `issue` |
-| `slack` | `message`, `thread` |
-| `notion` | `doc` |
+| `source`          | `kind` values                                           |
+| ----------------- | ------------------------------------------------------- |
+| `meeting`         | `note`                                                  |
+| `github`          | `code` (commit), `pr`, `issue`                          |
+| `slack`           | `message`, `thread`                                     |
+| `notion`          | `doc`                                                   |
 | `manual` / `seed` | `note`, `decision` (if title contains ADR/RFC/decision) |
 
 `module` is derived from `metadata.repo`, `metadata.channel`, `metadata.database_id`, or set explicitly by the caller. Used for filtered search.
@@ -282,12 +290,12 @@ Every stored document is tagged with `source`, `module`, and `kind`:
 
 ## Chat Modes
 
-| Mode | Trigger keywords | Response shape |
-|---|---|---|
-| `qa` | _(default)_ | RAG answer with `[Source N]` citations |
-| `decision` | "why did we…", "decision", "alternatives", "trade-offs" | Decision archaeology: what, who, alternatives, dissent, trade-offs |
-| `onboarding` | "how does", "how do I", "where is", "walk me through" | Step-by-step with file paths and module names |
-| `history` | "has anyone", "ever seen", "previously", "in the past" | Chronological list of prior occurrences |
+| Mode         | Trigger keywords                                        | Response shape                                                     |
+| ------------ | ------------------------------------------------------- | ------------------------------------------------------------------ |
+| `qa`         | _(default)_                                             | RAG answer with `[Source N]` citations                             |
+| `decision`   | "why did we…", "decision", "alternatives", "trade-offs" | Decision archaeology: what, who, alternatives, dissent, trade-offs |
+| `onboarding` | "how does", "how do I", "where is", "walk me through"   | Step-by-step with file paths and module names                      |
+| `history`    | "has anyone", "ever seen", "previously", "in the past"  | Chronological list of prior occurrences                            |
 
 Mode can also be set explicitly via `dto.mode` in the request body.
 
@@ -295,33 +303,33 @@ Mode can also be set explicitly via `dto.mode` in the request body.
 
 ## API Reference (summary)
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| GET | `/health` | — | Health check |
-| POST | `/auth/register` | — | Register user |
-| POST | `/auth/login` | — | Login, returns JWT |
-| GET | `/auth/me` | ✓ | Current user |
-| GET | `/documents` | — | List all documents |
-| POST | `/documents` | — | Create document manually |
-| POST | `/documents/seed` | — | Seed raw text (embed & store) |
-| POST | `/documents/seed/bulk` | — | Bulk seed array |
-| DELETE | `/documents/:id` | — | Delete document |
-| POST | `/search` | — | Semantic search |
-| POST | `/summary` | — | Summarise document or raw text |
-| GET | `/chat/sessions` | ✓ | List sessions |
-| GET | `/chat/sessions/list` | ✓ | Sessions with message count + preview |
-| POST | `/chat/sessions` | ✓ | Create session |
-| DELETE | `/chat/sessions/:id` | ✓ | Delete session |
-| GET | `/chat/sessions/:id/messages` | ✓ | Raw message list |
-| GET | `/chat/sessions/:id/history` | ✓ | Paired turn history |
-| POST | `/chat/sessions/:id/messages` | ✓ | Send message (RAG pipeline) |
-| POST | `/integrations/meetings/ingest` | — | Ingest meeting transcript |
-| POST | `/integrations/slack/ingest` | — | Ingest Slack channel history |
-| POST | `/integrations/github/ingest` | — | Ingest GitHub repo |
-| POST | `/integrations/notion/ingest` | — | Ingest Notion database or page |
-| POST | `/github/events` | — | GitHub live webhook |
-| POST | `/slack/events` | — | Slack Events API |
-| POST | `/webhooks/notion/poll` | — | Manually trigger Notion poll |
+| Method | Path                            | Auth | Description                           |
+| ------ | ------------------------------- | ---- | ------------------------------------- |
+| GET    | `/health`                       | —    | Health check                          |
+| POST   | `/auth/register`                | —    | Register user                         |
+| POST   | `/auth/login`                   | —    | Login, returns JWT                    |
+| GET    | `/auth/me`                      | ✓    | Current user                          |
+| GET    | `/documents`                    | —    | List all documents                    |
+| POST   | `/documents`                    | —    | Create document manually              |
+| POST   | `/documents/seed`               | —    | Seed raw text (embed & store)         |
+| POST   | `/documents/seed/bulk`          | —    | Bulk seed array                       |
+| DELETE | `/documents/:id`                | —    | Delete document                       |
+| POST   | `/search`                       | —    | Semantic search                       |
+| POST   | `/summary`                      | —    | Summarise document or raw text        |
+| GET    | `/chat/sessions`                | ✓    | List sessions                         |
+| GET    | `/chat/sessions/list`           | ✓    | Sessions with message count + preview |
+| POST   | `/chat/sessions`                | ✓    | Create session                        |
+| DELETE | `/chat/sessions/:id`            | ✓    | Delete session                        |
+| GET    | `/chat/sessions/:id/messages`   | ✓    | Raw message list                      |
+| GET    | `/chat/sessions/:id/history`    | ✓    | Paired turn history                   |
+| POST   | `/chat/sessions/:id/messages`   | ✓    | Send message (RAG pipeline)           |
+| POST   | `/integrations/meetings/ingest` | —    | Ingest meeting transcript             |
+| POST   | `/integrations/slack/ingest`    | —    | Ingest Slack channel history          |
+| POST   | `/integrations/github/ingest`   | —    | Ingest GitHub repo                    |
+| POST   | `/integrations/notion/ingest`   | —    | Ingest Notion database or page        |
+| POST   | `/github/events`                | —    | GitHub live webhook                   |
+| POST   | `/slack/events`                 | —    | Slack Events API                      |
+| POST   | `/webhooks/notion/poll`         | —    | Manually trigger Notion poll          |
 
 ---
 
@@ -349,7 +357,7 @@ NOTION_POLL_DATABASES=db-id-1,db-id-2   # comma-separated, polled every 30 min
 
 # Server
 PORT=3000
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=http://localhost:3002
 ```
 
 ---
