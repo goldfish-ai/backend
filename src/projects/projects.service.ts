@@ -4,6 +4,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { DatabaseService } from '../database/database.service';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -22,11 +23,28 @@ export interface ProjectIntegration {
   config: Record<string, any>;
   created_at: Date;
   updated_at: Date;
+  payloadUrl?: string;
 }
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly config: ConfigService,
+  ) {}
+
+  /**
+   * Returns the inbound webhook Payload URL for supported providers
+   * (github, slack) so users can paste it into their webhook settings.
+   */
+  private getPayloadUrl(projectId: number, provider: string): string | undefined {
+    const base = this.config.get<string>('BASE_URL') ?? 'http://localhost:3000';
+    const urls: Record<string, string> = {
+      github: `${base}/api/projects/${projectId}/webhooks/github`,
+      slack: `${base}/api/projects/${projectId}/webhooks/slack`,
+    };
+    return urls[provider];
+  }
 
   // -------------------------------------------------------
   // Project CRUD
@@ -141,7 +159,13 @@ export class ProjectsService {
       `SELECT * FROM project_integrations WHERE project_id = $1 ORDER BY provider`,
       [projectId],
     );
-    return res.rows;
+
+    const rows = res.rows.map((row) => ({
+      ...row,
+      payloadUrl: row.config?.token ? this.getPayloadUrl(projectId, row.provider) : undefined,
+    }));
+
+    return rows;
   }
 
   async getIntegration(
@@ -152,7 +176,9 @@ export class ProjectsService {
       `SELECT * FROM project_integrations WHERE project_id = $1 AND provider = $2`,
       [projectId, provider],
     );
-    return res.rows[0] ?? null;
+    const row = res.rows[0] ?? null;
+    if (!row) return null;
+    return { ...row, payloadUrl: this.getPayloadUrl(projectId, provider) };
   }
 
   /**
@@ -250,7 +276,8 @@ export class ProjectsService {
        RETURNING *`,
       [projectId, provider, config],
     );
-    return res.rows[0];
+    const row = res.rows[0];
+    return { ...row, payloadUrl: this.getPayloadUrl(projectId, provider) };
   }
 
   async patchIntegrationConfig(
@@ -281,7 +308,8 @@ export class ProjectsService {
        RETURNING *`,
       [projectId, provider, partial],
     );
-    return res.rows[0];
+    const row = res.rows[0];
+    return { ...row, payloadUrl: this.getPayloadUrl(projectId, provider) };
   }
 
   async deleteIntegration(projectId: number, provider: string): Promise<void> {
