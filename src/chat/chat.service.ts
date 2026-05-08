@@ -141,6 +141,7 @@ export class ChatService {
       similarity: r.similarity,
       snippet: (r.content ?? '').slice(0, 200),
       metadata: r.metadata ?? {},
+      source_url: r.source_url ?? null,
     }));
     const assistantMsg = await this.saveMessage(
       sessionId,
