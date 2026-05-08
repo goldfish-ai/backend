@@ -137,49 +137,57 @@ No relevant documents were found. Answer based on general knowledge and be trans
     module?: string | null;
     author?: string | null;
   }): Promise<string | null> {
-    // Fast-path: very short Slack messages are almost always noise
-    if (doc.source === 'slack') {
-      const wordCount = doc.content.trim().split(/\s+/).length;
-      if (wordCount < 4) return null;
+    // Fast-path: fewer than 2 words is always noise regardless of source
+    const wordCount = doc.content.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount < 2) return null;
 
-      // LLM relevance check for Slack content
-      const truncated = doc.content.length > 1200
-        ? doc.content.slice(0, 1200) + '...'
-        : doc.content;
+    // Universal LLM relevance check — source-aware prompt
+    const truncatedForRelevance = doc.content.length > 1200
+      ? doc.content.slice(0, 1200) + '...'
+      : doc.content;
 
-      const relevanceRaw = await this.client.chat.completions.create({
-        model: this.chatModel,
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a relevance classifier for a software engineering team knowledge base. ' +
-              'Respond ONLY with valid JSON.',
-          },
-          {
-            role: 'user',
-            content:
-              `Classify whether this Slack message is relevant to software engineering work.\n\n` +
-              `RELEVANT: technical discussions, bugs, features, architecture, APIs, code reviews, ` +
-              `deployments, decisions, planning, incidents, tool/process discussions.\n` +
-              `NOT RELEVANT: pure social chit-chat ("hi", "thanks", "lol"), emoji-only reactions, ` +
-              `personal off-topic conversation, simple logistics with no technical detail.\n\n` +
-              `Message: ${truncated}\n\n` +
-              `Respond: { "relevant": true/false }`,
-          },
-        ],
-      });
+    const relevanceRaw = await this.client.chat.completions.create({
+      model: this.chatModel,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a relevance classifier for a software engineering team knowledge base. ' +
+            'Respond ONLY with valid JSON.',
+        },
+        {
+          role: 'user',
+          content:
+            `Classify whether this document contains meaningful, non-trivial information worth storing.\n\n` +
+            `Source: ${doc.source}  Kind: ${doc.kind ?? 'unknown'}\n\n` +
+            `RELEVANT examples by source:\n` +
+            `- slack: technical discussions, bugs, features, architecture, decisions, incidents, code reviews\n` +
+            `- github: commits with real changes, PRs with descriptions, issues with substance\n` +
+            `- notion: pages with actual content, decisions, specs, documentation\n` +
+            `- meeting: segments with technical discussion, decisions, action items\n` +
+            `- manual/seed: any content with real substance\n\n` +
+            `NOT RELEVANT:\n` +
+            `- slack: chit-chat, greetings, emoji-only, "thanks", "ok", "lol", off-topic personal messages\n` +
+            `- github: trivial commits ("fix typo", "bump version", "whitespace fix"), bot/auto-generated PRs with no description, empty issues\n` +
+            `- notion: empty pages, untitled stubs, template placeholders with no real content\n` +
+            `- meeting: filler segments ("ok", "yeah", "let's get started", "brb"), non-substantive short segments\n` +
+            `- any source: placeholder or test content with no real information\n\n` +
+            `Title: ${doc.title}\n` +
+            `Content: ${truncatedForRelevance}\n\n` +
+            `Respond ONLY with: { "relevant": true } or { "relevant": false }`,
+        },
+      ],
+    });
 
-      try {
-        const parsed = JSON.parse(
-          relevanceRaw.choices[0]?.message?.content?.trim() ?? '{}',
-        ) as { relevant?: boolean };
-        if (parsed.relevant === false) return null;
-      } catch {
-        // If parse fails, assume relevant — safer to keep than lose data
-      }
+    try {
+      const parsed = JSON.parse(
+        relevanceRaw.choices[0]?.message?.content?.trim() ?? '{}',
+      ) as { relevant?: boolean };
+      if (parsed.relevant === false) return null;
+    } catch {
+      // If parse fails, assume relevant — safer to keep than lose data
     }
 
     // Truncate content to stay within token limits
