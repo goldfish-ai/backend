@@ -199,6 +199,28 @@ export class ProjectsService {
     return res.rows[0];
   }
 
+  async patchIntegrationConfig(
+    projectId: number,
+    provider: string,
+    partial: Record<string, any>,
+  ): Promise<ProjectIntegration> {
+    if (provider === 'github' && partial.token) {
+      await this.validateGithubToken(partial.token);
+    }
+
+    const res = await this.db.query<ProjectIntegration>(
+      `INSERT INTO project_integrations (project_id, provider, config)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (project_id, provider)
+       DO UPDATE SET
+         config = project_integrations.config || $3,
+         updated_at = NOW()
+       RETURNING *`,
+      [projectId, provider, partial],
+    );
+    return res.rows[0];
+  }
+
   async deleteIntegration(projectId: number, provider: string): Promise<void> {
     await this.db.query(
       `DELETE FROM project_integrations WHERE project_id = $1 AND provider = $2`,

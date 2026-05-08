@@ -19,6 +19,21 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AddMemberDto } from './dto/add-member.dto';
 import { UpsertIntegrationDto } from './dto/upsert-integration.dto';
+import { SetGithubTokenDto } from './dto/set-github-token.dto';
+import { SetGithubWebhookSecretDto } from './dto/set-github-webhook-secret.dto';
+import { SetSlackTokenDto } from './dto/set-slack-token.dto';
+import { SetSlackSigningSecretDto } from './dto/set-slack-signing-secret.dto';
+
+const MASKED_CONFIG_KEYS = ['token', 'webhookSecret', 'signingSecret'];
+
+function maskIntegration(integration: any) {
+  const maskedConfig = Object.fromEntries(
+    Object.entries(integration.config as Record<string, any>).map(([k, v]) =>
+      MASKED_CONFIG_KEYS.includes(k) ? [k, '***'] : [k, v],
+    ),
+  );
+  return { ...integration, config: maskedConfig };
+}
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
@@ -95,18 +110,60 @@ export class ProjectsController {
 
   @Get(':projectId/integrations')
   @UseGuards(ProjectMemberGuard)
-  listIntegrations(@Param('projectId', ParseIntPipe) projectId: number) {
-    return this.projects.listIntegrations(projectId);
+  async listIntegrations(@Param('projectId', ParseIntPipe) projectId: number) {
+    const integrations = await this.projects.listIntegrations(projectId);
+    return integrations.map(maskIntegration);
   }
 
   @Put(':projectId/integrations/:provider')
   @UseGuards(ProjectMemberGuard)
-  upsertIntegration(
+  async upsertIntegration(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Param('provider') provider: string,
     @Body() dto: UpsertIntegrationDto,
   ) {
-    return this.projects.upsertIntegration(projectId, provider, dto.config);
+    const integration = await this.projects.upsertIntegration(projectId, provider, dto.config);
+    return maskIntegration(integration);
+  }
+
+  @Post(':projectId/integrations/github/token')
+  @UseGuards(ProjectMemberGuard)
+  async setGithubToken(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() dto: SetGithubTokenDto,
+  ) {
+    const integration = await this.projects.patchIntegrationConfig(projectId, 'github', { token: dto.token });
+    return maskIntegration(integration);
+  }
+
+  @Post(':projectId/integrations/github/webhook-secret')
+  @UseGuards(ProjectMemberGuard)
+  async setGithubWebhookSecret(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() dto: SetGithubWebhookSecretDto,
+  ) {
+    const integration = await this.projects.patchIntegrationConfig(projectId, 'github', { webhookSecret: dto.webhookSecret });
+    return maskIntegration(integration);
+  }
+
+  @Post(':projectId/integrations/slack/token')
+  @UseGuards(ProjectMemberGuard)
+  async setSlackToken(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() dto: SetSlackTokenDto,
+  ) {
+    const integration = await this.projects.patchIntegrationConfig(projectId, 'slack', { token: dto.token });
+    return maskIntegration(integration);
+  }
+
+  @Post(':projectId/integrations/slack/signing-secret')
+  @UseGuards(ProjectMemberGuard)
+  async setSlackSigningSecret(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() dto: SetSlackSigningSecretDto,
+  ) {
+    const integration = await this.projects.patchIntegrationConfig(projectId, 'slack', { signingSecret: dto.signingSecret });
+    return maskIntegration(integration);
   }
 
   @Delete(':projectId/integrations/:provider')
