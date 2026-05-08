@@ -28,9 +28,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
 -- NULL means the raw title+content was used (pre-processing or irrelevant Slack).
 ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS processed_text TEXT;
 
--- Add data_created_at column if upgrading from an older schema
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_date TIMESTAMPTZ;
-ALTER TABLE documents RENAME COLUMN source_date TO data_created_at;
+-- Add data_created_at column (idempotent - safe to re-run)
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS data_created_at TIMESTAMPTZ;
 
 -- Indexes

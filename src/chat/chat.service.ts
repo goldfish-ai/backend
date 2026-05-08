@@ -382,6 +382,7 @@ export class ChatService {
         break;
       case 'qa':
       default:
+        opts.threshold = Math.min(opts.threshold ?? 0.15, 0.1);
         break;
     }
     return opts;

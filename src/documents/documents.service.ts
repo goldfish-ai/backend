@@ -50,6 +50,7 @@ export function deriveModuleAndKind(input: {
     else if (t === 'issue') kind = 'issue';
     else if (t === 'thread') kind = 'thread';
     else if (t === 'message') kind = 'message';
+    else if (t === 'file') kind = 'doc';
     else if (input.source === 'notion') kind = 'doc';
     else if (/\b(adr|decision|rfc)\b/i.test(input.title)) kind = 'decision';
     else kind = 'note';
