@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import axios, { AxiosResponse } from 'axios';
+import { DatabaseService } from '../../database/database.service';
 import { DocumentsService } from '../../documents/documents.service';
 import { ProjectsService } from '../../projects/projects.service';
 import { GithubIngestDto } from './dto/github-ingest.dto';
@@ -10,7 +10,7 @@ export class GithubService {
   private readonly logger = new Logger(GithubService.name);
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly db: DatabaseService,
     private readonly documents: DocumentsService,
     private readonly projects: ProjectsService,
   ) {}
@@ -55,30 +55,46 @@ export class GithubService {
     return true;
   }
 
+  /**
+   * Returns true if a document with the given metadata filter already exists
+   * for this project. Uses PostgreSQL JSONB @> (contains) operator.
+   * Scoped to project_id — same data in different projects is NOT a duplicate.
+   */
+  private async alreadyIngested(projectId: number, filter: Record<string, any>): Promise<boolean> {
+    const res = await this.db.query(
+      `SELECT 1 FROM documents WHERE project_id = $1 AND metadata @> $2::jsonb LIMIT 1`,
+      [projectId, JSON.stringify(filter)],
+    );
+    return res.rows.length > 0;
+  }
   async ingest(dto: GithubIngestDto, projectId = 1): Promise<{ stored: number[]; skipped: number }> {
     const type = dto.type ?? 'all';
     const stored: number[] = [];
+    let skipped = 0;
     const token = await this.resolveToken(projectId, dto.token);
 
     if (type === 'commits' || type === 'all') {
-      const ids = await this.ingestCommits(dto.owner, dto.repo, dto.limit, dto.branch, token, projectId);
-      stored.push(...ids);
+      const result = await this.ingestCommits(dto.owner, dto.repo, dto.limit, dto.branch, token, projectId);
+      stored.push(...result.stored);
+      skipped += result.skipped;
     }
     if (type === 'pulls' || type === 'all') {
-      const ids = await this.ingestPulls(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', token, projectId);
-      stored.push(...ids);
+      const result = await this.ingestPulls(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', token, projectId);
+      stored.push(...result.stored);
+      skipped += result.skipped;
     }
     if (type === 'issues' || type === 'all') {
-      const ids = await this.ingestIssues(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', token, projectId);
-      stored.push(...ids);
+      const result = await this.ingestIssues(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', token, projectId);
+      stored.push(...result.stored);
+      skipped += result.skipped;
     }
-
     if (type === 'files' || type === 'all') {
-      const ids = await this.ingestFiles(dto.owner, dto.repo, dto.branch, dto.filePaths, token, projectId);
-      stored.push(...ids);
+      const result = await this.ingestFiles(dto.owner, dto.repo, dto.branch, dto.filePaths, token, projectId);
+      stored.push(...result.stored);
+      skipped += result.skipped;
     }
 
-    return { stored, skipped: 0 };
+    return { stored, skipped };
   }
 
   private async ingestCommits(
@@ -88,8 +104,9 @@ export class GithubService {
     branch?: string,
     token: string = '',
     projectId = 1,
-  ): Promise<number[]> {
+  ): Promise<{ stored: number[]; skipped: number }> {
     const stored: number[] = [];
+    let skipped = 0;
     let page = 1;
     const repoFull = `${owner}/${repo}`;
 
@@ -108,6 +125,12 @@ export class GithubService {
       if (!data.length) break;
 
       for (const c of data) {
+        if (await this.alreadyIngested(projectId, { sha: c.sha, repo: repoFull })) {
+          skipped++;
+          if (limit !== undefined && stored.length + skipped >= limit) break;
+          continue;
+        }
+
         const doc = await this.documents.create({
           title: `[Commit] ${c.commit.message.split('\n')[0].slice(0, 120)}`,
           content: [
@@ -133,8 +156,8 @@ export class GithubService {
       page++;
     }
 
-    this.logger.log(`Commits for ${repoFull}: ${stored.length} stored`);
-    return stored;
+    this.logger.log(`Commits for ${repoFull}: ${stored.length} stored, ${skipped} skipped (already exist)`);
+    return { stored, skipped };
   }
 
   private async ingestPulls(
@@ -144,8 +167,9 @@ export class GithubService {
     state = 'all',
     token: string = '',
     projectId = 1,
-  ): Promise<number[]> {
+  ): Promise<{ stored: number[]; skipped: number }> {
     const stored: number[] = [];
+    let skipped = 0;
     let page = 1;
     const repoFull = `${owner}/${repo}`;
 
@@ -164,6 +188,12 @@ export class GithubService {
       if (!data.length) break;
 
       for (const pr of data) {
+        if (await this.alreadyIngested(projectId, { pr_number: pr.number, repo: repoFull })) {
+          skipped++;
+          if (limit !== undefined && stored.length + skipped >= limit) break;
+          continue;
+        }
+
         const doc = await this.documents.create({
           title: `[PR #${pr.number}] ${pr.title}`,
           content: [
@@ -191,8 +221,8 @@ export class GithubService {
       page++;
     }
 
-    this.logger.log(`Pull requests for ${repoFull}: ${stored.length} stored`);
-    return stored;
+    this.logger.log(`Pull requests for ${repoFull}: ${stored.length} stored, ${skipped} skipped (already exist)`);
+    return { stored, skipped };
   }
 
   private async ingestIssues(
@@ -202,8 +232,9 @@ export class GithubService {
     state = 'all',
     token: string = '',
     projectId = 1,
-  ): Promise<number[]> {
+  ): Promise<{ stored: number[]; skipped: number }> {
     const stored: number[] = [];
+    let skipped = 0;
     let page = 1;
     const repoFull = `${owner}/${repo}`;
 
@@ -225,6 +256,12 @@ export class GithubService {
       const issues = data.filter((i: any) => !i.pull_request);
 
       for (const issue of issues) {
+        if (await this.alreadyIngested(projectId, { issue_number: issue.number, repo: repoFull })) {
+          skipped++;
+          if (limit !== undefined && stored.length + skipped >= limit) break;
+          continue;
+        }
+
         const doc = await this.documents.create({
           title: `[Issue #${issue.number}] ${issue.title}`,
           content: [
@@ -252,8 +289,8 @@ export class GithubService {
       page++;
     }
 
-    this.logger.log(`Issues for ${repoFull}: ${stored.length} stored`);
-    return stored;
+    this.logger.log(`Issues for ${repoFull}: ${stored.length} stored, ${skipped} skipped (already exist)`);
+    return { stored, skipped };
   }
 
   /**
@@ -294,8 +331,9 @@ export class GithubService {
     filePaths?: string[],
     token: string = '',
     projectId = 1,
-  ): Promise<number[]> {
+  ): Promise<{ stored: number[]; skipped: number }> {
     const stored: number[] = [];
+    let skipped = 0;
     const repoFull = `${owner}/${repo}`;
     const ref = branch ?? 'HEAD';
 
@@ -334,6 +372,11 @@ export class GithubService {
 
     for (const file of targets) {
       try {
+        if (await this.alreadyIngested(projectId, { path: file.path, repo: repoFull })) {
+          skipped++;
+          continue;
+        }
+
         const contentRes = await axios.get(
           `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}`,
           {
@@ -370,7 +413,7 @@ export class GithubService {
       }
     }
 
-    this.logger.log(`Files for ${repoFull}: ${stored.length} stored`);
-    return stored;
+    this.logger.log(`Files for ${repoFull}: ${stored.length} stored, ${skipped} skipped (already exist)`);
+    return { stored, skipped };
   }
 }
