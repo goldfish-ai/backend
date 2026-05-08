@@ -35,7 +35,7 @@ export class GithubEventsProjectController {
     @Res() res: Response,
   ) {
     const rawBody = req.rawBody;
-    if (rawBody && sig && !this.github.verify(rawBody, sig)) {
+    if (rawBody && sig && !await this.github.verify(rawBody, sig, projectId)) {
       res.status(HttpStatus.UNAUTHORIZED).json({ error: "Invalid signature" });
       return;
     }
@@ -82,7 +82,7 @@ export class GithubEventsController {
     @Res() res: Response,
   ) {
     const rawBody = req.rawBody;
-    if (rawBody && sig && !this.github.verify(rawBody, sig)) {
+    if (rawBody && sig && !await this.github.verify(rawBody, sig, 1)) {
       res.status(HttpStatus.UNAUTHORIZED).json({ error: "Invalid signature" });
       return;
     }

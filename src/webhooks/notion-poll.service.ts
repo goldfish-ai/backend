@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Client } from '@notionhq/client';
 import { DatabaseService } from '../database/database.service';
@@ -16,7 +15,6 @@ export class NotionPollService {
   private readonly logger = new Logger(NotionPollService.name);
 
   constructor(
-    private readonly config: ConfigService,
     private readonly db: DatabaseService,
     private readonly documents: DocumentsService,
   ) {}
@@ -71,19 +69,6 @@ export class NotionPollService {
         return { projectId: row.project_id as number, token, databaseIds };
       })
       .filter((c: ProjectNotionConfig | null): c is ProjectNotionConfig => c !== null);
-
-    // Env-var fallback for project 1 (only when it has no DB integration row)
-    const hasProject1 = configs.some((c) => c.projectId === 1);
-    if (!hasProject1 && (!projectId || projectId === 1)) {
-      const envToken = this.config.get<string>('NOTION_TOKEN');
-      const envDbs = this.config.get<string>('NOTION_POLL_DATABASES');
-      if (envToken && envDbs) {
-        const databaseIds = envDbs.split(',').map((s) => s.trim()).filter(Boolean);
-        if (databaseIds.length) {
-          configs.push({ projectId: 1, token: envToken, databaseIds });
-        }
-      }
-    }
 
     return configs;
   }

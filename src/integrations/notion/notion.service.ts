@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Client } from '@notionhq/client';
 import { DocumentsService } from '../../documents/documents.service';
+import { ProjectsService } from '../../projects/projects.service';
 import { NotionIngestDto } from './dto/notion-ingest.dto';
 
 @Injectable()
@@ -9,14 +9,25 @@ export class NotionService {
   private readonly logger = new Logger(NotionService.name);
 
   constructor(
-    private readonly config: ConfigService,
     private readonly documents: DocumentsService,
+    private readonly projects: ProjectsService,
   ) {}
 
-  private getClient(token?: string): Client {
-    const t = token || this.config.get<string>('NOTION_TOKEN');
-    if (!t) throw new BadRequestException('NOTION_TOKEN is required');
-    return new Client({ auth: t });
+  /**
+   * Resolves the Notion integration token for a project.
+   * Priority: explicit override token > DB config.token.
+   * Throws if no token found — env fallback is intentionally removed.
+   */
+  private async resolveToken(projectId: number, explicitToken?: string): Promise<string> {
+    if (explicitToken) return explicitToken;
+    const integration = await this.projects.getIntegration(projectId, 'notion');
+    const token = integration?.config?.token ?? integration?.config?.access_token;
+    if (!token) throw new BadRequestException('Notion token not configured for this project');
+    return token;
+  }
+
+  private getClient(token: string): Client {
+    return new Client({ auth: token });
   }
 
   async ingest(dto: NotionIngestDto, projectId = 1): Promise<{ stored: number[] }> {
@@ -24,15 +35,16 @@ export class NotionService {
       throw new BadRequestException('Provide databaseId or pageId');
     }
 
+    const token = await this.resolveToken(projectId, dto.token);
     const stored: number[] = [];
 
     if (dto.databaseId) {
-      const ids = await this.ingestDatabase(dto.databaseId, dto.token, projectId);
+      const ids = await this.ingestDatabase(dto.databaseId, token, projectId);
       stored.push(...ids);
     }
 
     if (dto.pageId) {
-      const id = await this.ingestPage(dto.pageId, dto.token, projectId);
+      const id = await this.ingestPage(dto.pageId, token, projectId);
       stored.push(id);
     }
 
@@ -77,7 +89,7 @@ export class NotionService {
     return titleProp?.title?.map((t: any) => t.plain_text).join('') || 'Untitled';
   }
 
-  private async ingestDatabase(databaseId: string, token?: string, projectId = 1): Promise<number[]> {
+  private async ingestDatabase(databaseId: string, token: string, projectId = 1): Promise<number[]> {
     const client = this.getClient(token);
     const response = await client.databases.query({ database_id: databaseId });
     const stored: number[] = [];
@@ -103,7 +115,7 @@ export class NotionService {
     return stored;
   }
 
-  private async ingestPage(pageId: string, token?: string, projectId = 1): Promise<number> {
+  private async ingestPage(pageId: string, token: string, projectId = 1): Promise<number> {
     const client = this.getClient(token);
     const page = await client.pages.retrieve({ page_id: pageId });
     const title = this.getPageTitle(page);

@@ -39,8 +39,9 @@ export class WebhooksProjectController {
     @Headers('x-hub-signature-256') sig: string,
     @Body() body: any,
   ) {
+    // project-scoped: verify uses DB webhook secret for this project
     const rawBody = req.rawBody;
-    if (rawBody && sig && !this.github.verify(rawBody, sig)) {
+    if (rawBody && sig && !await this.github.verify(rawBody, sig, projectId)) {
       return { ok: false, error: 'Invalid signature' };
     }
 
@@ -73,7 +74,7 @@ export class WebhooksProjectController {
     @Body() body: any,
   ) {
     const rawBody = req.rawBody;
-    if (rawBody && sig && !this.slack.verify(rawBody, ts, sig)) {
+    if (rawBody && sig && !await this.slack.verify(rawBody, ts, sig, projectId)) {
       return { error: 'Invalid signature' };
     }
 
@@ -112,7 +113,7 @@ export class WebhooksController {
     @Body() body: any,
   ) {
     const rawBody = req.rawBody;
-    if (rawBody && sig && !this.github.verify(rawBody, sig)) {
+    if (rawBody && sig && !await this.github.verify(rawBody, sig, 1)) {
       return { ok: false, error: 'Invalid signature' };
     }
 
@@ -144,7 +145,7 @@ export class WebhooksController {
     @Body() body: any,
   ) {
     const rawBody = req.rawBody;
-    if (rawBody && sig && !this.slack.verify(rawBody, ts, sig)) {
+    if (rawBody && sig && !await this.slack.verify(rawBody, ts, sig, 1)) {
       return { error: 'Invalid signature' };
     }
 

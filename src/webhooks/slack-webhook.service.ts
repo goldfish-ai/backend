@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { WebClient } from '@slack/web-api';
 import { DocumentsService } from '../documents/documents.service';
+import { ProjectsService } from '../projects/projects.service';
 
 @Injectable()
 export class SlackWebhookService {
@@ -10,13 +10,14 @@ export class SlackWebhookService {
   private readonly userCache = new Map<string, string>(); // userId → real name
 
   constructor(
-    private readonly config: ConfigService,
     private readonly documents: DocumentsService,
+    private readonly projects: ProjectsService,
   ) {}
 
-  verify(rawBody: Buffer, timestamp: string, signature: string): boolean {
-    const secret = this.config.get<string>('SLACK_SIGNING_SECRET');
-    if (!secret) return true;
+  async verify(rawBody: Buffer, timestamp: string, signature: string, projectId: number): Promise<boolean> {
+    const integration = await this.projects.getIntegration(projectId, 'slack');
+    const secret = integration?.config?.signingSecret;
+    if (!secret) return true; // skip verification if not configured in DB
 
     if (Math.abs(Date.now() / 1000 - parseInt(timestamp)) > 300) return false;
 
@@ -29,10 +30,11 @@ export class SlackWebhookService {
   }
 
   /** Resolve a Slack user ID to their real display name, with in-memory cache */
-  private async resolveUserName(userId: string): Promise<string> {
+  private async resolveUserName(userId: string, projectId: number): Promise<string> {
     if (this.userCache.has(userId)) return this.userCache.get(userId)!;
 
-    const token = this.config.get<string>('SLACK_TOKEN');
+    const integration = await this.projects.getIntegration(projectId, 'slack');
+    const token = integration?.config?.token;
     if (!token) return userId;
 
     try {
@@ -70,7 +72,7 @@ export class SlackWebhookService {
     const isThreadReply = !!(event.thread_ts && event.thread_ts !== event.ts);
 
     // Resolve real name via Slack API
-    const authorName = await this.resolveUserName(userId);
+    const authorName = await this.resolveUserName(userId, projectId);
 
     const doc = await this.documents.create({
       title: `[Slack] ${authorName}: ${text.slice(0, 80)}`,

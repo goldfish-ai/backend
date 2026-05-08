@@ -11,7 +11,7 @@ export class NotionIngestDto {
   @IsString()
   pageId?: string;
 
-  /** Override env NOTION_TOKEN */
+  /** Override the project DB token for this request only */
   @IsOptional()
   @IsString()
   token?: string;

@@ -46,7 +46,7 @@ export class GithubIngestDto {
   @IsString({ each: true })
   filePaths?: string[];
 
-  /** Override env GITHUB_TOKEN */
+  /** Override the project DB token for this request only */
   @IsOptional()
   @IsString()
   token?: string;
