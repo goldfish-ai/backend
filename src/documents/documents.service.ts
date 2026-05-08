@@ -7,6 +7,7 @@ import { SeedBulkDto } from './dto/seed-bulk.dto';
 
 export interface DocumentRow {
   id: number;
+  project_id: number;
   title: string;
   content: string;
   summary: string | null;
@@ -65,7 +66,7 @@ export class DocumentsService {
     private readonly openai: OpenAIService,
   ) {}
 
-  async create(dto: CreateDocumentDto): Promise<DocumentRow> {
+  async create(dto: CreateDocumentDto, projectId = 1): Promise<DocumentRow> {
     const { module, kind } = deriveModuleAndKind({
       title: dto.title ?? '',
       source: dto.source ?? 'manual',
@@ -96,10 +97,11 @@ export class DocumentsService {
     try {
       await client.query('BEGIN');
       const docRes = await client.query<DocumentRow>(
-        `INSERT INTO documents (title, content, source, author, metadata, module, kind, decision_type, data_created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO documents (project_id, title, content, source, author, metadata, module, kind, decision_type, data_created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
         [
+          projectId,
           dto.title,
           dto.content,
           dto.source ?? 'manual',
@@ -115,9 +117,9 @@ export class DocumentsService {
 
       // TODO: we will change this code — currently always inserting into embeddings
       await client.query(
-        `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
-         VALUES ($1, $2::vector, $3, $4)`,
-        [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
+        `INSERT INTO embeddings (document_id, project_id, embedding, model_name, processed_text)
+         VALUES ($1, $2, $3::vector, $4, $5)`,
+        [doc.id, projectId, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
       );
 
       await client.query('COMMIT');
@@ -130,18 +132,18 @@ export class DocumentsService {
     }
   }
 
-  async findAll(limit = 50): Promise<DocumentRow[]> {
+  async findAll(projectId: number, limit = 50): Promise<DocumentRow[]> {
     const res = await this.db.query<DocumentRow>(
-      `SELECT * FROM documents ORDER BY created_at DESC LIMIT $1`,
-      [limit],
+      `SELECT * FROM documents WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      [projectId, limit],
     );
     return res.rows;
   }
 
-  async findOne(id: number): Promise<DocumentRow> {
+  async findOne(id: number, projectId: number): Promise<DocumentRow> {
     const res = await this.db.query<DocumentRow>(
-      `SELECT * FROM documents WHERE id = $1`,
-      [id],
+      `SELECT * FROM documents WHERE id = $1 AND project_id = $2`,
+      [id, projectId],
     );
     if (res.rows.length === 0) {
       throw new NotFoundException(`Document ${id} not found`);
@@ -153,7 +155,7 @@ export class DocumentsService {
    * Quick seed: accepts raw text, derives a title from the first line,
    * embeds the full text, and stores it. Useful for injecting test data.
    */
-  async seed(dto: SeedDocumentDto): Promise<DocumentRow> {
+  async seed(dto: SeedDocumentDto, projectId = 1): Promise<DocumentRow> {
     const lines = dto.text.split('\n');
     const title = dto.title ?? (lines[0].slice(0, 200).trim() || 'Seeded document');
     const content = dto.text;
@@ -183,10 +185,11 @@ export class DocumentsService {
     try {
       await client.query('BEGIN');
       const docRes = await client.query<DocumentRow>(
-        `INSERT INTO documents (title, content, source, author, metadata, module, kind)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO documents (project_id, title, content, source, author, metadata, module, kind)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
         [
+          projectId,
           title,
           content,
           source,
@@ -200,9 +203,9 @@ export class DocumentsService {
 
       // TODO: we will change this code — currently always inserting into embeddings
       await client.query(
-        `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
-         VALUES ($1, $2::vector, $3, $4)`,
-        [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
+        `INSERT INTO embeddings (document_id, project_id, embedding, model_name, processed_text)
+         VALUES ($1, $2, $3::vector, $4, $5)`,
+        [doc.id, projectId, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
       );
 
       await client.query('COMMIT');
@@ -219,7 +222,7 @@ export class DocumentsService {
    * Bulk seed: embeds all items in parallel, then inserts them in a single
    * transaction. Returns the inserted document rows.
    */
-  async seedBulk(dto: SeedBulkDto): Promise<DocumentRow[]> {
+  async seedBulk(dto: SeedBulkDto, projectId = 1): Promise<DocumentRow[]> {
     const items = dto.documents.map((d) => {
       const title = d.title ?? (d.text.split('\n')[0].slice(0, 200).trim() || 'Seeded document');
       const source = d.source ?? 'seed';
@@ -265,17 +268,17 @@ export class DocumentsService {
       for (let idx = 0; idx < items.length; idx++) {
         const item = items[idx];
         const docRes = await client.query<DocumentRow>(
-          `INSERT INTO documents (title, content, source, author, metadata, module, kind)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO documents (project_id, title, content, source, author, metadata, module, kind)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING *`,
-          [item.title, item.content, item.source, item.author, item.metadata, item.module, item.kind],
+          [projectId, item.title, item.content, item.source, item.author, item.metadata, item.module, item.kind],
         );
         const doc = docRes.rows[0];
         // TODO: we will change this code — currently always inserting into embeddings
         await client.query(
-          `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
-           VALUES ($1, $2::vector, $3, $4)`,
-          [doc.id, this.toVectorLiteral(embeddings[idx]), this.openai.getEmbeddingModel(), processedTexts[idx]],
+          `INSERT INTO embeddings (document_id, project_id, embedding, model_name, processed_text)
+           VALUES ($1, $2, $3::vector, $4, $5)`,
+          [doc.id, projectId, this.toVectorLiteral(embeddings[idx]), this.openai.getEmbeddingModel(), processedTexts[idx]],
         );
         docs.push(doc);
       }
@@ -290,18 +293,21 @@ export class DocumentsService {
     }
   }
 
-  async remove(id: number): Promise<void> {
-    const res = await this.db.query(`DELETE FROM documents WHERE id = $1`, [id]);
+  async remove(id: number, projectId: number): Promise<void> {
+    const res = await this.db.query(
+      `DELETE FROM documents WHERE id = $1 AND project_id = $2`,
+      [id, projectId],
+    );
     if (res.rowCount === 0) {
       throw new NotFoundException(`Document ${id} not found`);
     }
   }
 
-  async updateSummary(id: number, summary: string): Promise<DocumentRow> {
+  async updateSummary(id: number, summary: string, projectId: number): Promise<DocumentRow> {
     const res = await this.db.query<DocumentRow>(
       `UPDATE documents SET summary = $1, updated_at = NOW()
-       WHERE id = $2 RETURNING *`,
-      [summary, id],
+       WHERE id = $2 AND project_id = $3 RETURNING *`,
+      [summary, id, projectId],
     );
     if (res.rows.length === 0) {
       throw new NotFoundException(`Document ${id} not found`);

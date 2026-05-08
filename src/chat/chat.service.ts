@@ -8,6 +8,7 @@ import { CreateMessageDto, ChatFiltersDto, ChatMode } from './dto/create-message
 export interface ChatSession {
   id: number;
   user_id: number;
+  project_id: number;
   title: string;
   created_at: Date;
   updated_at: Date;
@@ -30,25 +31,25 @@ export class ChatService {
     private readonly search: SearchService,
   ) {}
 
-  async createSession(userId: number, dto: CreateSessionDto): Promise<ChatSession> {
+  async createSession(userId: number, projectId: number, dto: CreateSessionDto): Promise<ChatSession> {
     const res = await this.db.query<ChatSession>(
-      `INSERT INTO chat_sessions (user_id, title)
-       VALUES ($1, $2) RETURNING *`,
-      [userId, dto.title ?? 'New Chat'],
+      `INSERT INTO chat_sessions (user_id, project_id, title)
+       VALUES ($1, $2, $3) RETURNING *`,
+      [userId, projectId, dto.title ?? 'New Chat'],
     );
     return res.rows[0];
   }
 
-  async listSessions(userId: number): Promise<ChatSession[]> {
+  async listSessions(userId: number, projectId: number): Promise<ChatSession[]> {
     const res = await this.db.query<ChatSession>(
-      `SELECT * FROM chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC`,
-      [userId],
+      `SELECT * FROM chat_sessions WHERE user_id = $1 AND project_id = $2 ORDER BY updated_at DESC`,
+      [userId, projectId],
     );
     return res.rows;
   }
 
-  async getMessages(userId: number, sessionId: number): Promise<ChatMessage[]> {
-    await this.assertOwner(userId, sessionId);
+  async getMessages(userId: number, projectId: number, sessionId: number): Promise<ChatMessage[]> {
+    await this.assertOwner(userId, projectId, sessionId);
     const res = await this.db.query<ChatMessage>(
       `SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC`,
       [sessionId],
@@ -58,6 +59,7 @@ export class ChatService {
 
   async addMessage(
     userId: number,
+    projectId: number,
     sessionId: number,
     dto: CreateMessageDto,
   ): Promise<{
@@ -65,7 +67,7 @@ export class ChatService {
     assistantMessage: ChatMessage;
     mode: ChatMode;
   }> {
-    await this.assertOwner(userId, sessionId);
+    await this.assertOwner(userId, projectId, sessionId);
 
     // 1. Save user message
     const userMsg = await this.saveMessage(sessionId, 'user', dto.content, []);
@@ -74,7 +76,7 @@ export class ChatService {
     const mode: ChatMode = dto.mode ?? this.detectMode(dto.content);
 
     // 3. Build SearchOptions from mode defaults + caller filters
-    const searchOpts = this.buildSearchOptions(mode, dto);
+    const searchOpts = this.buildSearchOptions(mode, dto, projectId);
 
     // 4a. Fetch recent history AND pre-compute embedding in parallel.
     //     Both are independent of each other — running concurrently saves one
@@ -179,7 +181,7 @@ export class ChatService {
    * Endpoint 1 — sidebar list
    * Returns all sessions for the user with message count + last message preview.
    */
-  async listSessionsForUI(userId: number) {
+  async listSessionsForUI(userId: number, projectId: number) {
     const res = await this.db.query(
       `SELECT
          s.id          AS session_id,
@@ -196,10 +198,10 @@ export class ChatService {
          ) AS last_message_preview
        FROM chat_sessions s
        LEFT JOIN chat_messages m ON m.session_id = s.id
-       WHERE s.user_id = $1
+       WHERE s.user_id = $1 AND s.project_id = $2
        GROUP BY s.id
        ORDER BY s.updated_at DESC`,
-      [userId],
+      [userId, projectId],
     );
 
     return {
@@ -211,8 +213,8 @@ export class ChatService {
   /**
    * Endpoint 2 — paired request/response turns for one session
    */
-  async getSessionHistory(userId: number, sessionId: number) {
-    await this.assertOwner(userId, sessionId);
+  async getSessionHistory(userId: number, projectId: number, sessionId: number) {
+    await this.assertOwner(userId, projectId, sessionId);
 
     const sessionRes = await this.db.query<ChatSession>(
       `SELECT * FROM chat_sessions WHERE id = $1`,
@@ -267,8 +269,8 @@ export class ChatService {
     };
   }
 
-  async deleteSession(userId: number, sessionId: number): Promise<void> {
-    await this.assertOwner(userId, sessionId);
+  async deleteSession(userId: number, projectId: number, sessionId: number): Promise<void> {
+    await this.assertOwner(userId, projectId, sessionId);
     await this.db.query('DELETE FROM chat_sessions WHERE id = $1', [sessionId]);
   }
 
@@ -278,11 +280,12 @@ export class ChatService {
    */
   async expandSource(
     userId: number,
+    projectId: number,
     sessionId: number,
     messageId: number,
     sourceIndex: number,
   ): Promise<{ root: any; siblings: any[] }> {
-    await this.assertOwner(userId, sessionId);
+    await this.assertOwner(userId, projectId, sessionId);
     const msgRes = await this.db.query<ChatMessage>(
       `SELECT * FROM chat_messages WHERE id = $1 AND session_id = $2`,
       [messageId, sessionId],
@@ -300,8 +303,9 @@ export class ChatService {
         `SELECT id, title, content, source, author, module, kind, metadata, created_at
            FROM documents
           WHERE source = 'slack' AND metadata->>'thread_ts' = $1 AND id <> $2
+            AND project_id = $3
           ORDER BY created_at ASC LIMIT 100`,
-        [String(md.thread_ts), src.document_id],
+        [String(md.thread_ts), src.document_id, projectId],
       );
       siblings = q.rows;
     } else if ((md.pr_number || md.issue_number) && md.repo) {
@@ -314,8 +318,9 @@ export class ChatService {
             AND metadata->>'repo' = $1
             AND metadata->>'${numKey}' = $2
             AND id <> $3
+            AND project_id = $4
           ORDER BY created_at ASC LIMIT 100`,
-        [String(md.repo), String(numVal), src.document_id],
+        [String(md.repo), String(numVal), src.document_id, projectId],
       );
       siblings = q.rows;
     }
@@ -353,9 +358,11 @@ export class ChatService {
   private buildSearchOptions(
     mode: ChatMode,
     dto: CreateMessageDto,
+    projectId?: number,
   ): SearchOptions {
     const f: ChatFiltersDto = dto.filters ?? {};
     const opts: SearchOptions = {
+      projectId,
       limit: dto.limit ?? 5,
       threshold: dto.threshold ?? 0.15,
       sources: f.sources,
@@ -420,12 +427,13 @@ export class ChatService {
     return res.rows[0];
   }
 
-  private async assertOwner(userId: number, sessionId: number) {
+  private async assertOwner(userId: number, projectId: number, sessionId: number) {
     const res = await this.db.query(
-      'SELECT user_id FROM chat_sessions WHERE id = $1',
+      'SELECT user_id, project_id FROM chat_sessions WHERE id = $1',
       [sessionId],
     );
     if (!res.rows.length) throw new NotFoundException('Session not found');
     if (res.rows[0].user_id !== userId) throw new ForbiddenException();
+    if (res.rows[0].project_id !== projectId) throw new ForbiddenException();
   }
 }

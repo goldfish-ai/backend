@@ -52,7 +52,7 @@ export class SlackWebhookService {
     }
   }
 
-  async handleEvent(payload: any): Promise<number | null> {
+  async handleEvent(payload: any, projectId = 1): Promise<number | null> {
     const event = payload.event;
     if (!event) return null;
 
@@ -87,7 +87,7 @@ export class SlackWebhookService {
         type: 'message',
         auto: true,
       },
-    });
+    }, projectId);
 
     this.logger.log(`Auto-embedded Slack message from ${authorName} in #${channel}`);
     return doc.id;

@@ -19,7 +19,7 @@ export class NotionService {
     return new Client({ auth: t });
   }
 
-  async ingest(dto: NotionIngestDto): Promise<{ stored: number[] }> {
+  async ingest(dto: NotionIngestDto, projectId = 1): Promise<{ stored: number[] }> {
     if (!dto.databaseId && !dto.pageId) {
       throw new BadRequestException('Provide databaseId or pageId');
     }
@@ -27,12 +27,12 @@ export class NotionService {
     const stored: number[] = [];
 
     if (dto.databaseId) {
-      const ids = await this.ingestDatabase(dto.databaseId, dto.token);
+      const ids = await this.ingestDatabase(dto.databaseId, dto.token, projectId);
       stored.push(...ids);
     }
 
     if (dto.pageId) {
-      const id = await this.ingestPage(dto.pageId, dto.token);
+      const id = await this.ingestPage(dto.pageId, dto.token, projectId);
       stored.push(id);
     }
 
@@ -77,7 +77,7 @@ export class NotionService {
     return titleProp?.title?.map((t: any) => t.plain_text).join('') || 'Untitled';
   }
 
-  private async ingestDatabase(databaseId: string, token?: string): Promise<number[]> {
+  private async ingestDatabase(databaseId: string, token?: string, projectId = 1): Promise<number[]> {
     const client = this.getClient(token);
     const response = await client.databases.query({ database_id: databaseId });
     const stored: number[] = [];
@@ -96,14 +96,14 @@ export class NotionService {
         content: content || title,
         source: 'notion',
         metadata: { notion_id: page.id, database_id: databaseId, url: (page as any).url },
-      });
+      }, projectId);
       stored.push(doc.id);
     }
 
     return stored;
   }
 
-  private async ingestPage(pageId: string, token?: string): Promise<number> {
+  private async ingestPage(pageId: string, token?: string, projectId = 1): Promise<number> {
     const client = this.getClient(token);
     const page = await client.pages.retrieve({ page_id: pageId });
     const title = this.getPageTitle(page);
@@ -115,7 +115,7 @@ export class NotionService {
       content: content || title,
       source: 'notion',
       metadata: { notion_id: pageId, url: (page as any).url },
-    });
+    }, projectId);
 
     return doc.id;
   }

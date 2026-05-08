@@ -113,3 +113,63 @@ SET kind = CASE
     ELSE 'note'
   END
 WHERE kind IS NULL OR kind = 'note';
+
+-- =====================================================================
+-- Multi-project support
+-- =====================================================================
+
+-- Projects table
+CREATE TABLE IF NOT EXISTS projects (
+  id         SERIAL PRIMARY KEY,
+  name       VARCHAR(200) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Seed the default project with id=1
+INSERT INTO projects (id, name)
+VALUES (1, 'Project 1')
+ON CONFLICT (id) DO NOTHING;
+
+-- Reset the sequence so the next auto-generated id starts at 2
+SELECT setval('projects_id_seq', GREATEST((SELECT MAX(id) FROM projects), 1));
+
+-- User <-> Project membership (many-to-many, no roles)
+CREATE TABLE IF NOT EXISTS project_members (
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (project_id, user_id)
+);
+
+-- Per-project integration config (replaces .env tokens)
+CREATE TABLE IF NOT EXISTS project_integrations (
+  id         SERIAL PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  provider   VARCHAR(50) NOT NULL,   -- 'github' | 'slack' | 'notion'
+  config     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (project_id, provider)
+);
+
+-- Add project_id to documents
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id);
+UPDATE documents SET project_id = 1 WHERE project_id IS NULL;
+ALTER TABLE documents ALTER COLUMN project_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_documents_project ON documents (project_id);
+
+-- Add project_id to embeddings
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id);
+UPDATE embeddings e
+   SET project_id = d.project_id
+  FROM documents d
+ WHERE e.document_id = d.id
+   AND e.project_id IS NULL;
+ALTER TABLE embeddings ALTER COLUMN project_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_embeddings_project ON embeddings (project_id);
+
+-- Add project_id to chat_sessions
+ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id);
+UPDATE chat_sessions SET project_id = 1 WHERE project_id IS NULL;
+ALTER TABLE chat_sessions ALTER COLUMN project_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_project ON chat_sessions (project_id);

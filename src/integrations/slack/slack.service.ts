@@ -40,7 +40,7 @@ export class SlackService {
     }
   }
 
-  async ingest(dto: SlackIngestDto): Promise<{ stored: number[] }> {
+  async ingest(dto: SlackIngestDto, projectId = 1): Promise<{ stored: number[] }> {
     const client = this.getClient(dto.token);
     const limit = dto.limit ?? 200;
 
@@ -97,7 +97,7 @@ export class SlackService {
           reply_count: parent.reply_count,
           type: 'thread',
         },
-      });
+      }, projectId);
       stored.push(doc.id);
     }
 
@@ -117,7 +117,7 @@ export class SlackService {
           slack_user_id: msg.user,
           type: 'message',
         },
-      });
+      }, projectId);
       stored.push(doc.id);
     }
 

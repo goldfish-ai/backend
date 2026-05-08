@@ -1,13 +1,19 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ProjectMemberGuard } from '../projects/guards/project-member.guard';
 import { SummaryDto } from './dto/summary.dto';
 import { SummaryService } from './summary.service';
 
-@Controller('summary')
+@Controller('projects/:projectId/summary')
+@UseGuards(JwtAuthGuard, ProjectMemberGuard)
 export class SummaryController {
   constructor(private readonly summaryService: SummaryService) {}
 
   @Post()
-  summarize(@Body() dto: SummaryDto) {
-    return this.summaryService.summarize(dto);
+  summarize(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() dto: SummaryDto,
+  ) {
+    return this.summaryService.summarize(dto, projectId);
   }
 }

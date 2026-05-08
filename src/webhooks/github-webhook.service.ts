@@ -91,7 +91,7 @@ export class GithubWebhookService {
     );
   }
 
-  async handlePush(payload: any): Promise<number[]> {
+  async handlePush(payload: any, projectId = 1): Promise<number[]> {
     const commits: any[] = payload.commits ?? [];
     const repo = payload.repository?.full_name ?? "unknown";
     const [owner, repoName] = repo.split("/");
@@ -123,7 +123,7 @@ export class GithubWebhookService {
         author: commit.author?.name ?? null,
         dataCreatedAt: commit.timestamp ?? null,
         metadata: { sha: commit.id, repo, type: "commit", auto: true },
-      });
+      }, projectId);
       stored.push(doc.id);
       this.logger.log(
         `Auto-embedded commit ${commit.id.slice(0, 8)} from ${repo}`,
@@ -133,7 +133,7 @@ export class GithubWebhookService {
     return stored;
   }
 
-  async handlePullRequest(payload: any): Promise<number | null> {
+  async handlePullRequest(payload: any, projectId = 1): Promise<number | null> {
     const action: string = payload.action;
     if (!["opened", "edited", "closed", "synchronize"].includes(action))
       return null;
@@ -183,13 +183,13 @@ export class GithubWebhookService {
         action,
         auto: true,
       },
-    });
+    }, projectId);
 
     this.logger.log(`Auto-embedded PR #${pr.number} (${action}) from ${repo}`);
     return doc.id;
   }
 
-  async handleIssueComment(payload: any): Promise<number | null> {
+  async handleIssueComment(payload: any, projectId = 1): Promise<number | null> {
     if (payload.action !== "created") return null;
 
     const comment = payload.comment;
@@ -218,7 +218,7 @@ export class GithubWebhookService {
         is_pr: isPr,
         auto: true,
       },
-    });
+    }, projectId);
 
     this.logger.log(
       `Auto-embedded issue_comment by ${comment.user.login} on #${issue.number} from ${repo}`,

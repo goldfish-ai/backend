@@ -41,25 +41,25 @@ export class GithubService {
     return true;
   }
 
-  async ingest(dto: GithubIngestDto): Promise<{ stored: number[]; skipped: number }> {
+  async ingest(dto: GithubIngestDto, projectId = 1): Promise<{ stored: number[]; skipped: number }> {
     const type = dto.type ?? 'all';
     const stored: number[] = [];
 
     if (type === 'commits' || type === 'all') {
-      const ids = await this.ingestCommits(dto.owner, dto.repo, dto.limit, dto.branch, dto.token);
+      const ids = await this.ingestCommits(dto.owner, dto.repo, dto.limit, dto.branch, dto.token, projectId);
       stored.push(...ids);
     }
     if (type === 'pulls' || type === 'all') {
-      const ids = await this.ingestPulls(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', dto.token);
+      const ids = await this.ingestPulls(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', dto.token, projectId);
       stored.push(...ids);
     }
     if (type === 'issues' || type === 'all') {
-      const ids = await this.ingestIssues(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', dto.token);
+      const ids = await this.ingestIssues(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', dto.token, projectId);
       stored.push(...ids);
     }
 
     if (type === 'files' || type === 'all') {
-      const ids = await this.ingestFiles(dto.owner, dto.repo, dto.branch, dto.filePaths, dto.token);
+      const ids = await this.ingestFiles(dto.owner, dto.repo, dto.branch, dto.filePaths, dto.token, projectId);
       stored.push(...ids);
     }
 
@@ -72,6 +72,7 @@ export class GithubService {
     limit?: number,
     branch?: string,
     token?: string,
+    projectId = 1,
   ): Promise<number[]> {
     const stored: number[] = [];
     let page = 1;
@@ -104,7 +105,7 @@ export class GithubService {
           author: c.commit.author.name || c.author?.login || null,
           dataCreatedAt: c.commit.author.date ?? null,
           metadata: { sha: c.sha, repo: repoFull, type: 'commit' },
-        });
+        }, projectId);
         stored.push(doc.id);
 
         if (limit !== undefined && stored.length >= limit) break;
@@ -127,6 +128,7 @@ export class GithubService {
     limit?: number,
     state = 'all',
     token?: string,
+    projectId = 1,
   ): Promise<number[]> {
     const stored: number[] = [];
     let page = 1;
@@ -161,7 +163,7 @@ export class GithubService {
           author: pr.user?.login ?? null,
           dataCreatedAt: pr.created_at ?? null,
           metadata: { pr_number: pr.number, repo: repoFull, type: 'pull_request', state: pr.state },
-        });
+        }, projectId);
         stored.push(doc.id);
 
         if (limit !== undefined && stored.length >= limit) break;
@@ -184,6 +186,7 @@ export class GithubService {
     limit?: number,
     state = 'all',
     token?: string,
+    projectId = 1,
   ): Promise<number[]> {
     const stored: number[] = [];
     let page = 1;
@@ -221,7 +224,7 @@ export class GithubService {
           author: issue.user?.login ?? null,
           dataCreatedAt: issue.created_at ?? null,
           metadata: { issue_number: issue.number, repo: repoFull, type: 'issue', state: issue.state },
-        });
+        }, projectId);
         stored.push(doc.id);
 
         if (limit !== undefined && stored.length >= limit) break;
@@ -275,6 +278,7 @@ export class GithubService {
     branch?: string,
     filePaths?: string[],
     token?: string,
+    projectId = 1,
   ): Promise<number[]> {
     const stored: number[] = [];
     const repoFull = `${owner}/${repo}`;
@@ -342,7 +346,7 @@ export class GithubService {
           source: 'github',
           author: undefined,
           metadata: { path: file.path, repo: repoFull, type: 'file', sha: file.sha },
-        });
+        }, projectId);
         stored.push(doc.id);
 
         if (!this.checkRateLimit(contentRes)) break;

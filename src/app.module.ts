@@ -9,6 +9,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { ProjectsModule } from './projects/projects.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -23,6 +24,7 @@ import { HealthController } from './health.controller';
     AuthModule,
     ChatModule,
     WebhooksModule,
+    ProjectsModule,
   ],
   controllers: [HealthController],
 })

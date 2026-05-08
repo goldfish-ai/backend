@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
 export interface TimelineQuery {
+  projectId?: number;
   modules?: string[];
   sources?: string[];
   kinds?: string[];
@@ -47,6 +48,7 @@ export class TimelineService {
       return `$${params.length}`;
     };
 
+    if (q.projectId)       where.push(`d.project_id = ${addParam(q.projectId)}`);
     if (q.modules?.length) where.push(`d.module = ANY(${addParam(q.modules)})`);
     if (q.sources?.length) where.push(`d.source = ANY(${addParam(q.sources)})`);
     if (q.kinds?.length)   where.push(`d.kind   = ANY(${addParam(q.kinds)})`);
