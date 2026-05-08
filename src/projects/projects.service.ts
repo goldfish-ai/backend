@@ -2,7 +2,9 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
+import axios from 'axios';
 import { DatabaseService } from '../database/database.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -153,11 +155,39 @@ export class ProjectsService {
     return res.rows[0] ?? null;
   }
 
+  /**
+   * Validates a GitHub PAT by calling GET /user on the GitHub API.
+   * Throws UnprocessableEntityException if the token is invalid.
+   * Returns the authenticated GitHub login on success.
+   */
+  async validateGithubToken(token: string): Promise<{ login: string; scopes: string[] }> {
+    try {
+      const { data, headers } = await axios.get('https://api.github.com/user', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+        },
+      });
+      const scopes = (headers['x-oauth-scopes'] ?? '')
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      return { login: data.login, scopes };
+    } catch {
+      throw new UnprocessableEntityException('Invalid GitHub token');
+    }
+  }
+
   async upsertIntegration(
     projectId: number,
     provider: string,
     config: Record<string, any>,
   ): Promise<ProjectIntegration> {
+    // Validate GitHub token before saving
+    if (provider === 'github' && config.token) {
+      await this.validateGithubToken(config.token);
+    }
+
     const res = await this.db.query<ProjectIntegration>(
       `INSERT INTO project_integrations (project_id, provider, config)
        VALUES ($1, $2, $3)

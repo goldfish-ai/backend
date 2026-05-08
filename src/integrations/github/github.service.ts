@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosResponse } from 'axios';
 import { DocumentsService } from '../../documents/documents.service';
+import { ProjectsService } from '../../projects/projects.service';
 import { GithubIngestDto } from './dto/github-ingest.dto';
 
 @Injectable()
@@ -11,13 +12,26 @@ export class GithubService {
   constructor(
     private readonly config: ConfigService,
     private readonly documents: DocumentsService,
+    private readonly projects: ProjectsService,
   ) {}
 
-  private headers(token?: string) {
-    const t = token || this.config.get<string>('GITHUB_TOKEN');
+  /**
+   * Resolves the GitHub PAT for a project.
+   * Priority: explicit override token > DB config.token.
+   * Throws if no token found — env fallback is intentionally removed.
+   */
+  private async resolveToken(projectId: number, explicitToken?: string): Promise<string> {
+    if (explicitToken) return explicitToken;
+    const integration = await this.projects.getIntegration(projectId, 'github');
+    const token = integration?.config?.token;
+    if (!token) throw new BadRequestException('GitHub token not configured for this project');
+    return token;
+  }
+
+  private headers(token: string) {
     return {
       Accept: 'application/vnd.github.v3+json',
-      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      Authorization: `Bearer ${token}`,
     };
   }
 
@@ -44,22 +58,23 @@ export class GithubService {
   async ingest(dto: GithubIngestDto, projectId = 1): Promise<{ stored: number[]; skipped: number }> {
     const type = dto.type ?? 'all';
     const stored: number[] = [];
+    const token = await this.resolveToken(projectId, dto.token);
 
     if (type === 'commits' || type === 'all') {
-      const ids = await this.ingestCommits(dto.owner, dto.repo, dto.limit, dto.branch, dto.token, projectId);
+      const ids = await this.ingestCommits(dto.owner, dto.repo, dto.limit, dto.branch, token, projectId);
       stored.push(...ids);
     }
     if (type === 'pulls' || type === 'all') {
-      const ids = await this.ingestPulls(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', dto.token, projectId);
+      const ids = await this.ingestPulls(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', token, projectId);
       stored.push(...ids);
     }
     if (type === 'issues' || type === 'all') {
-      const ids = await this.ingestIssues(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', dto.token, projectId);
+      const ids = await this.ingestIssues(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', token, projectId);
       stored.push(...ids);
     }
 
     if (type === 'files' || type === 'all') {
-      const ids = await this.ingestFiles(dto.owner, dto.repo, dto.branch, dto.filePaths, dto.token, projectId);
+      const ids = await this.ingestFiles(dto.owner, dto.repo, dto.branch, dto.filePaths, token, projectId);
       stored.push(...ids);
     }
 
@@ -71,7 +86,7 @@ export class GithubService {
     repo: string,
     limit?: number,
     branch?: string,
-    token?: string,
+    token: string = '',
     projectId = 1,
   ): Promise<number[]> {
     const stored: number[] = [];
@@ -127,7 +142,7 @@ export class GithubService {
     repo: string,
     limit?: number,
     state = 'all',
-    token?: string,
+    token: string = '',
     projectId = 1,
   ): Promise<number[]> {
     const stored: number[] = [];
@@ -185,7 +200,7 @@ export class GithubService {
     repo: string,
     limit?: number,
     state = 'all',
-    token?: string,
+    token: string = '',
     projectId = 1,
   ): Promise<number[]> {
     const stored: number[] = [];
@@ -277,7 +292,7 @@ export class GithubService {
     repo: string,
     branch?: string,
     filePaths?: string[],
-    token?: string,
+    token: string = '',
     projectId = 1,
   ): Promise<number[]> {
     const stored: number[] = [];

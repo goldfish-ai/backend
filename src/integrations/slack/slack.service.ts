@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { WebClient } from '@slack/web-api';
 import { DocumentsService } from '../../documents/documents.service';
+import { ProjectsService } from '../../projects/projects.service';
 import { SlackIngestDto } from './dto/slack-ingest.dto';
 
 @Injectable()
@@ -10,14 +10,25 @@ export class SlackService {
   private readonly userCache = new Map<string, string>();
 
   constructor(
-    private readonly config: ConfigService,
     private readonly documents: DocumentsService,
+    private readonly projects: ProjectsService,
   ) {}
 
-  private getClient(token?: string): WebClient {
-    const t = token || this.config.get<string>('SLACK_TOKEN');
-    if (!t) throw new BadRequestException('SLACK_TOKEN is required');
-    return new WebClient(t);
+  /**
+   * Resolves the Slack bot token for a project.
+   * Priority: explicit override token > DB config.token.
+   * Throws if no token found — env fallback is intentionally removed.
+   */
+  private async resolveToken(projectId: number, explicitToken?: string): Promise<string> {
+    if (explicitToken) return explicitToken;
+    const integration = await this.projects.getIntegration(projectId, 'slack');
+    const token = integration?.config?.token;
+    if (!token) throw new BadRequestException('Slack token not configured for this project');
+    return token;
+  }
+
+  private getClient(token: string): WebClient {
+    return new WebClient(token);
   }
 
   /** Resolve Slack user ID to real display name with caching */
@@ -41,7 +52,8 @@ export class SlackService {
   }
 
   async ingest(dto: SlackIngestDto, projectId = 1): Promise<{ stored: number[] }> {
-    const client = this.getClient(dto.token);
+    const token = await this.resolveToken(projectId, dto.token);
+    const client = this.getClient(token);
     const limit = dto.limit ?? 200;
 
     let channelName = dto.channelId;

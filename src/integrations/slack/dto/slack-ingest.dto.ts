@@ -12,7 +12,7 @@ export class SlackIngestDto {
   @Max(1000)
   limit?: number = 200;
 
-  /** Override env SLACK_TOKEN */
+  /** Override the project DB token for this request only */
   @IsOptional()
   @IsString()
   token?: string;

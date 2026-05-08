@@ -35,7 +35,7 @@ export class SlackEventsProjectController {
     @Body() body: any,
   ) {
     const rawBody = req.rawBody;
-    if (rawBody && sig && !this.slack.verify(rawBody, ts, sig)) {
+    if (rawBody && sig && !await this.slack.verify(rawBody, ts, sig, projectId)) {
       return { error: 'Invalid signature' };
     }
 
@@ -78,7 +78,7 @@ export class SlackEventsController {
     @Body() body: any,
   ) {
     const rawBody = req.rawBody;
-    if (rawBody && sig && !this.slack.verify(rawBody, ts, sig)) {
+    if (rawBody && sig && !await this.slack.verify(rawBody, ts, sig, 1)) {
       return { error: 'Invalid signature' };
     }
 
