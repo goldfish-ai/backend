@@ -120,6 +120,111 @@ No relevant documents were found. Answer based on general knowledge and be trans
   }
 
   /**
+   * Process a document into a clean, information-dense paragraph suitable for
+   * semantic embedding. Returns the processed text to embed.
+   *
+   * For Slack messages: first runs a cheap relevance check. If the message is
+   * casual chit-chat (hi, thanks, lol, etc.) returns null — the caller should
+   * fall back to embedding the raw content as-is.
+   *
+   * For all other sources: always processes and returns the clean text.
+   */
+  async processDocument(doc: {
+    title: string;
+    content: string;
+    source: string;
+    kind?: string | null;
+    module?: string | null;
+    author?: string | null;
+  }): Promise<string | null> {
+    // Fast-path: very short Slack messages are almost always noise
+    if (doc.source === 'slack') {
+      const wordCount = doc.content.trim().split(/\s+/).length;
+      if (wordCount < 4) return null;
+
+      // LLM relevance check for Slack content
+      const truncated = doc.content.length > 1200
+        ? doc.content.slice(0, 1200) + '...'
+        : doc.content;
+
+      const relevanceRaw = await this.client.chat.completions.create({
+        model: this.chatModel,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a relevance classifier for a software engineering team knowledge base. ' +
+              'Respond ONLY with valid JSON.',
+          },
+          {
+            role: 'user',
+            content:
+              `Classify whether this Slack message is relevant to software engineering work.\n\n` +
+              `RELEVANT: technical discussions, bugs, features, architecture, APIs, code reviews, ` +
+              `deployments, decisions, planning, incidents, tool/process discussions.\n` +
+              `NOT RELEVANT: pure social chit-chat ("hi", "thanks", "lol"), emoji-only reactions, ` +
+              `personal off-topic conversation, simple logistics with no technical detail.\n\n` +
+              `Message: ${truncated}\n\n` +
+              `Respond: { "relevant": true/false }`,
+          },
+        ],
+      });
+
+      try {
+        const parsed = JSON.parse(
+          relevanceRaw.choices[0]?.message?.content?.trim() ?? '{}',
+        ) as { relevant?: boolean };
+        if (parsed.relevant === false) return null;
+      } catch {
+        // If parse fails, assume relevant — safer to keep than lose data
+      }
+    }
+
+    // Truncate content to stay within token limits
+    const truncatedContent =
+      doc.content.length > 6000
+        ? doc.content.slice(0, 6000) + '\n...[truncated]'
+        : doc.content;
+
+    const response = await this.client.chat.completions.create({
+      model: this.chatModel,
+      temperature: 0.1,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a knowledge distillation engine for a software engineering team. ' +
+            'Your job is to produce concise, information-dense text optimised for semantic search.',
+        },
+        {
+          role: 'user',
+          content:
+            `Produce a clean, information-dense paragraph (max 120 words) from the document below ` +
+            `that will be used as the text for a semantic embedding.\n\n` +
+            `Rules:\n` +
+            `- Include: what this is about, which module/service it belongs to, key changes or ` +
+            `decisions made, important technical terms, people involved.\n` +
+            `- Strip: raw code diffs, stack traces, URLs, timestamps, log lines, markdown syntax, ` +
+            `filler words.\n` +
+            `- Write in plain prose. No bullet points. No headers.\n\n` +
+            `Document metadata:\n` +
+            `- Title: ${doc.title}\n` +
+            `- Source: ${doc.source}\n` +
+            `- Kind: ${doc.kind ?? 'unknown'}\n` +
+            `- Module: ${doc.module ?? 'unknown'}\n` +
+            `- Author: ${doc.author ?? 'unknown'}\n\n` +
+            `Document content:\n${truncatedContent}\n\n` +
+            `Output ONLY the paragraph. No labels, no preamble.`,
+        },
+      ],
+    });
+
+    return response.choices[0]?.message?.content?.trim() ?? null;
+  }
+
+  /**
    * If the current message is a vague follow-up (pronouns, "it", "they", "the fix", etc.)
    * and there is prior conversation history, rewrite it into a self-contained search query.
    * Returns the original message unchanged when no rewrite is needed.

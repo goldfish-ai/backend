@@ -65,10 +65,6 @@ export class DocumentsService {
   ) {}
 
   async create(dto: CreateDocumentDto): Promise<DocumentRow> {
-    const embedding = await this.openai.generateEmbedding(
-      `${dto.title}\n\n${dto.content}`,
-    );
-
     const { module, kind } = deriveModuleAndKind({
       title: dto.title ?? '',
       source: dto.source ?? 'manual',
@@ -76,6 +72,22 @@ export class DocumentsService {
       module: dto.module,
       kind: dto.kind,
     });
+
+    // Process the document into clean text first, then embed that.
+    // For irrelevant Slack messages processDocument returns null — fall back
+    // to embedding the raw title + content so the document is still saved.
+    const processed = await this.openai.processDocument({
+      title: dto.title ?? '',
+      content: dto.content,
+      source: dto.source ?? 'manual',
+      kind,
+      module,
+      author: dto.author ?? null,
+    });
+
+    const embedding = processed !== null
+      ? await this.openai.generateEmbedding(processed)
+      : null;
 
     const client = await this.db.getPool().connect();
     try {
@@ -98,11 +110,13 @@ export class DocumentsService {
       );
       const doc = docRes.rows[0];
 
-      await client.query(
-        `INSERT INTO embeddings (document_id, embedding, model_name)
-         VALUES ($1, $2::vector, $3)`,
-        [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel()],
-      );
+      if (embedding !== null) {
+        await client.query(
+          `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
+           VALUES ($1, $2::vector, $3, $4)`,
+          [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
+        );
+      }
 
       await client.query('COMMIT');
       return doc;
@@ -148,7 +162,19 @@ export class DocumentsService {
       metadata: dto.metadata,
     });
 
-    const embedding = await this.openai.generateEmbedding(`${title}\n\n${content}`);
+    const processed = await this.openai.processDocument({
+      title,
+      content,
+      source,
+      kind,
+      module,
+      author: dto.author ?? null,
+    });
+
+    const textToEmbed = processed ?? `${title}\n\n${content}`;
+    const embedding = processed !== null
+      ? await this.openai.generateEmbedding(textToEmbed)
+      : null;
 
     const client = await this.db.getPool().connect();
     try {
@@ -169,11 +195,13 @@ export class DocumentsService {
       );
       const doc = docRes.rows[0];
 
-      await client.query(
-        `INSERT INTO embeddings (document_id, embedding, model_name)
-         VALUES ($1, $2::vector, $3)`,
-        [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel()],
-      );
+      if (embedding !== null) {
+        await client.query(
+          `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
+           VALUES ($1, $2::vector, $3, $4)`,
+          [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
+        );
+      }
 
       await client.query('COMMIT');
       return doc;
@@ -205,10 +233,35 @@ export class DocumentsService {
       };
     });
 
-    // Embed all texts in one batched OpenAI call
-    const embeddings = await this.openai.generateEmbeddings(
-      items.map((i) => `${i.title}\n\n${i.content}`),
+    // Process all documents in parallel, then embed the processed (or raw) texts in one batch
+    const processedTexts = await Promise.all(
+      items.map((i) =>
+        this.openai.processDocument({
+          title: i.title,
+          content: i.content,
+          source: i.source,
+          kind: i.kind,
+          module: i.module,
+          author: i.author,
+        }),
+      ),
     );
+
+    const textsToEmbed = items.map(
+      (i, idx) => processedTexts[idx] ?? `${i.title}\n\n${i.content}`,
+    );
+
+    // Only embed docs that have processed text; skip irrelevant ones
+    const embeddingMap = new Map<number, number[]>();
+    const indicesToEmbed = items
+      .map((_, idx) => idx)
+      .filter((idx) => processedTexts[idx] !== null);
+
+    if (indicesToEmbed.length > 0) {
+      const batchTexts = indicesToEmbed.map((idx) => textsToEmbed[idx]);
+      const batchEmbeddings = await this.openai.generateEmbeddings(batchTexts);
+      indicesToEmbed.forEach((idx, pos) => embeddingMap.set(idx, batchEmbeddings[pos]));
+    }
 
     const client = await this.db.getPool().connect();
     try {
@@ -224,11 +277,14 @@ export class DocumentsService {
           [item.title, item.content, item.source, item.author, item.metadata, item.module, item.kind],
         );
         const doc = docRes.rows[0];
-        await client.query(
-          `INSERT INTO embeddings (document_id, embedding, model_name)
-           VALUES ($1, $2::vector, $3)`,
-          [doc.id, this.toVectorLiteral(embeddings[idx]), this.openai.getEmbeddingModel()],
-        );
+        const embedding = embeddingMap.get(idx);
+        if (embedding !== undefined) {
+          await client.query(
+            `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
+             VALUES ($1, $2::vector, $3, $4)`,
+            [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processedTexts[idx]],
+          );
+        }
         docs.push(doc);
       }
 
