@@ -718,8 +718,8 @@ OPENAI_API_KEY          OpenAI API key
 JWT_SECRET              JWT signing secret (default: 'changeme')
 
 # Optional
-PORT                    Server port (default: 3000)
-FRONTEND_URL            CORS origin (default: 'http://localhost:3002')
+PORT                    Server port (default: 3002)
+FRONTEND_URL            CORS origin (default: 'http://localhost:5173')
 
 # Integrations (can also be passed per-request in body)
 GITHUB_TOKEN            GitHub Personal Access Token

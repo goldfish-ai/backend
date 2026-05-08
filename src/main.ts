@@ -23,7 +23,7 @@ async function bootstrap() {
 
   app.setGlobalPrefix("api");
 
-  const port = config.get<number>("PORT") ?? 3000;
+  const port = config.get<number>("PORT") ?? 3002;
   await app.listen(port);
   console.log(`\n🚀 Backend running on http://localhost:${port}/api\n`);
 }
