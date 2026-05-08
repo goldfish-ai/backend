@@ -63,8 +63,9 @@ export class OpenAIService {
   ): Promise<string> {
     const systemPrompt = contextBlock
       ? this.buildContextSystemPrompt(mode, contextBlock)
-      : `You are Project Memory, an AI assistant for software teams. 
-No relevant documents were found. Answer based on general knowledge and be transparent about it.`;
+      : `You are Project Memory, an AI assistant for software teams.
+No relevant documents were found. Answer based on general knowledge and be transparent about it.
+IMPORTANT: You MUST format your entire response as valid HTML. Use <p>, <h3>, <h4>, <ul>, <li>, <strong>, <code>, <blockquote> tags as appropriate. Do NOT return plain text or markdown. Do NOT include <html>, <head>, or <body> tags.`;
 
     const response = await this.client.chat.completions.create({
       model: this.chatModel,
@@ -72,7 +73,10 @@ No relevant documents were found. Answer based on general knowledge and be trans
       messages: [
         { role: "system", content: systemPrompt },
         ...history,
-        { role: "user", content: userMessage },
+        {
+          role: "user",
+          content: `${userMessage}\n\n[IMPORTANT: Your response MUST be formatted as HTML. Use proper HTML tags. Do not use plain text or markdown.]`,
+        },
       ],
     });
     return response.choices[0]?.message?.content?.trim() ?? "";
@@ -112,7 +116,15 @@ No relevant documents were found. Answer based on general knowledge and be trans
         "  • Call out unresolved or recurring issues explicitly.",
     }[mode];
 
-    return `${base}${modeInstruction}\n\nContext:\n${contextBlock}`;
+    const htmlInstruction =
+      "\n\nIMPORTANT: You MUST format your entire response as valid HTML. " +
+      "Use these tags as appropriate: <p> for paragraphs, <h3>/<h4> for headings, " +
+      "<ul>/<li> for lists, <strong> for emphasis, <code> for inline code or file paths, " +
+      "<blockquote> for verbatim quotes. " +
+      "Do NOT return plain text or markdown. Do NOT wrap in <html>, <head>, or <body> tags. " +
+      "Return only the inner HTML fragment.";
+
+    return `${base}${modeInstruction}${htmlInstruction}\n\nContext:\n${contextBlock}`;
   }
 
   getEmbeddingModel() {

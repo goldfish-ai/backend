@@ -187,7 +187,7 @@ export class ChatService {
          s.updated_at,
          COUNT(m.id)::int AS message_count,
          (
-           SELECT content
+           SELECT regexp_replace(content, '<[^>]*>', '', 'g')
              FROM chat_messages
             WHERE session_id = s.id
             ORDER BY created_at DESC
