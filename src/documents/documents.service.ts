@@ -85,9 +85,9 @@ export class DocumentsService {
       author: dto.author ?? null,
     });
 
-    const embedding = processed !== null
-      ? await this.openai.generateEmbedding(processed)
-      : null;
+    // TODO: we will change this code — currently always embedding regardless of relevance
+    const textToEmbed = processed ?? `${dto.title}\n\n${dto.content}`;
+    const embedding = await this.openai.generateEmbedding(textToEmbed);
 
     const client = await this.db.getPool().connect();
     try {
@@ -110,13 +110,12 @@ export class DocumentsService {
       );
       const doc = docRes.rows[0];
 
-      if (embedding !== null) {
-        await client.query(
-          `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
-           VALUES ($1, $2::vector, $3, $4)`,
-          [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
-        );
-      }
+      // TODO: we will change this code — currently always inserting into embeddings
+      await client.query(
+        `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
+         VALUES ($1, $2::vector, $3, $4)`,
+        [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
+      );
 
       await client.query('COMMIT');
       return doc;
@@ -171,10 +170,9 @@ export class DocumentsService {
       author: dto.author ?? null,
     });
 
+    // TODO: we will change this code — currently always embedding regardless of relevance
     const textToEmbed = processed ?? `${title}\n\n${content}`;
-    const embedding = processed !== null
-      ? await this.openai.generateEmbedding(textToEmbed)
-      : null;
+    const embedding = await this.openai.generateEmbedding(textToEmbed);
 
     const client = await this.db.getPool().connect();
     try {
@@ -195,13 +193,12 @@ export class DocumentsService {
       );
       const doc = docRes.rows[0];
 
-      if (embedding !== null) {
-        await client.query(
-          `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
-           VALUES ($1, $2::vector, $3, $4)`,
-          [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
-        );
-      }
+      // TODO: we will change this code — currently always inserting into embeddings
+      await client.query(
+        `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
+         VALUES ($1, $2::vector, $3, $4)`,
+        [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processed],
+      );
 
       await client.query('COMMIT');
       return doc;
@@ -251,17 +248,8 @@ export class DocumentsService {
       (i, idx) => processedTexts[idx] ?? `${i.title}\n\n${i.content}`,
     );
 
-    // Only embed docs that have processed text; skip irrelevant ones
-    const embeddingMap = new Map<number, number[]>();
-    const indicesToEmbed = items
-      .map((_, idx) => idx)
-      .filter((idx) => processedTexts[idx] !== null);
-
-    if (indicesToEmbed.length > 0) {
-      const batchTexts = indicesToEmbed.map((idx) => textsToEmbed[idx]);
-      const batchEmbeddings = await this.openai.generateEmbeddings(batchTexts);
-      indicesToEmbed.forEach((idx, pos) => embeddingMap.set(idx, batchEmbeddings[pos]));
-    }
+    // TODO: we will change this code — currently embedding all items regardless of relevance
+    const embeddings = await this.openai.generateEmbeddings(textsToEmbed);
 
     const client = await this.db.getPool().connect();
     try {
@@ -277,14 +265,12 @@ export class DocumentsService {
           [item.title, item.content, item.source, item.author, item.metadata, item.module, item.kind],
         );
         const doc = docRes.rows[0];
-        const embedding = embeddingMap.get(idx);
-        if (embedding !== undefined) {
-          await client.query(
-            `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
-             VALUES ($1, $2::vector, $3, $4)`,
-            [doc.id, this.toVectorLiteral(embedding), this.openai.getEmbeddingModel(), processedTexts[idx]],
-          );
-        }
+        // TODO: we will change this code — currently always inserting into embeddings
+        await client.query(
+          `INSERT INTO embeddings (document_id, embedding, model_name, processed_text)
+           VALUES ($1, $2::vector, $3, $4)`,
+          [doc.id, this.toVectorLiteral(embeddings[idx]), this.openai.getEmbeddingModel(), processedTexts[idx]],
+        );
         docs.push(doc);
       }
 
