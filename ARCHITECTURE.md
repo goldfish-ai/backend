@@ -252,7 +252,7 @@ erDiagram
 | HTTP Client | axios |
 | Validation | `class-validator` / `class-transformer` |
 
-**Base URL:** `http://localhost:3000/api`
+**Base URL:** `http://localhost:3002/api`
 
 ---
 
@@ -702,7 +702,7 @@ OPENAI_API_KEY          OpenAI API key
 JWT_SECRET              JWT signing secret (default: 'changeme')
 
 # Optional
-PORT                    Server port (default: 3000)
+PORT                    Server port (default: 3002)
 FRONTEND_URL            CORS origin (default: 'http://localhost:5173')
 
 # Integrations (can also be passed per-request in body)

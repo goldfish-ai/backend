@@ -28,7 +28,7 @@
                             │ REST  (Bearer JWT)
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   NestJS API  :3000/api                         │
+│                   NestJS API  :3002/api                         │
 │                                                                  │
 │  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌───────────────┐  │
 │  │   Auth   │  │  Chat    │  │ Documents │  │  Integrations │  │
@@ -348,7 +348,7 @@ NOTION_TOKEN=secret_...
 NOTION_POLL_DATABASES=db-id-1,db-id-2   # comma-separated, polled every 30 min
 
 # Server
-PORT=3000
+PORT=3002
 FRONTEND_URL=http://localhost:5173
 ```
 

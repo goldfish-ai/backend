@@ -1,4 +1,4 @@
-@baseUrl = http://localhost:3000/api
+@baseUrl = http://localhost:3002/api
 @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjMsImVtYWlsIjoidW1hbmdAaXN1bW1hdGlvbi5jb20iLCJpYXQiOjE3NzgxODAwODEsImV4cCI6MTc3ODc4NDg4MX0.9QMI1lN1KSZxIyfhMOfgRx3A_CTo9Ybifo27xWyQVdI
 
 # ─────────────────────────────────────────────
