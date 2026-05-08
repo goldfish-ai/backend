@@ -235,17 +235,10 @@ No relevant documents were found. Answer based on general knowledge and be trans
   ): Promise<string> {
     if (!history.length) return message;
 
-    // Only rewrite short/vague messages — heuristic: <60 chars or contains anaphoric words
-    const isVague =
-      message.length < 60 ||
-      /\b(it|they|them|this|that|the fix|the issue|the problem|the team|the decision|the change|the pr|the bug|the incident|the solution|those|these)\b/i.test(
-        message,
-      );
-    if (!isVague) return message;
-
-    const recent = history.slice(-4); // last 2 turns
+    // Use the last 6 messages (3 turns) for rewrite context
+    const recent = history.slice(-6);
     const historyText = recent
-      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 300)}`)
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 400)}`)
       .join('\n');
 
     const response = await this.client.chat.completions.create({
@@ -255,13 +248,15 @@ No relevant documents were found. Answer based on general knowledge and be trans
         {
           role: 'system',
           content:
-            'You are a search query rewriter. Given a short follow-up question and recent conversation history, ' +
-            'rewrite the question into a concise, self-contained search query (max 20 words) that captures the full intent. ' +
-            'Output ONLY the rewritten query, no explanation.',
+            'You are a search query rewriter for a software team knowledge base. ' +
+            'Given a conversation history and the latest question, rewrite the question into a ' +
+            'concise, self-contained search query (max 20 words) that captures the full intent. ' +
+            'If the question is already self-contained and requires no context from history, ' +
+            'return it UNCHANGED. Output ONLY the (possibly rewritten) query, no explanation.',
         },
         {
           role: 'user',
-          content: `Conversation so far:\n${historyText}\n\nFollow-up question: ${message}\n\nRewritten search query:`,
+          content: `Conversation so far:\n${historyText}\n\nLatest question: ${message}\n\nRewritten search query:`,
         },
       ],
     });

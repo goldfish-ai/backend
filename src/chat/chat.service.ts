@@ -76,20 +76,34 @@ export class ChatService {
     // 3. Build SearchOptions from mode defaults + caller filters
     const searchOpts = this.buildSearchOptions(mode, dto);
 
-    // 4a. Fetch recent history early so we can rewrite vague follow-ups
-    const historyEarly = await this.db.query<ChatMessage>(
-      `SELECT role, content FROM chat_messages
-       WHERE session_id = $1 AND id < $2
-       ORDER BY created_at DESC LIMIT 10`,
-      [sessionId, userMsg.id],
-    );
+    // 4a. Fetch recent history AND pre-compute embedding in parallel.
+    //     Both are independent of each other — running concurrently saves one
+    //     full OpenAI round-trip on the critical path.
+    const [historyEarly, originalEmbedding] = await Promise.all([
+      this.db.query<ChatMessage>(
+        `SELECT role, content FROM chat_messages
+         WHERE session_id = $1 AND id < $2
+         ORDER BY created_at DESC LIMIT 10`,
+        [sessionId, userMsg.id],
+      ),
+      this.openai.generateEmbedding(dto.content),
+    ]);
+
     const historyMessages = historyEarly.rows.reverse().map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
 
-    // 4b. Rewrite vague follow-up into a self-contained search query
+    // 4b. Rewrite contextual follow-ups into a self-contained search query.
+    //     When there is no history the call is skipped (returns original).
+    //     If the query comes back unchanged we reuse the pre-computed embedding.
     const searchQuery = await this.openai.rewriteQuery(dto.content, historyMessages);
+
+    if (searchQuery === dto.content) {
+      // Query was not rewritten — reuse the embedding we already have
+      searchOpts.precomputedEmbedding = originalEmbedding;
+    }
+    // Otherwise the query changed — search.search will generate a fresh embedding
 
     // 4c. Run filtered semantic search using the (possibly rewritten) query
     const searchResults = await this.search.search(searchQuery, searchOpts);
@@ -107,7 +121,7 @@ export class ChatService {
       .map((r, i) => this.formatSource(r, i + 1))
       .join('\n\n---\n\n');
 
-    // 7. Generate AI response with mode-specific system prompt
+    // 6. Generate AI response with mode-specific system prompt
     const answer = await this.openai.chatWithContext(
       dto.content,
       contextBlock,
@@ -115,7 +129,7 @@ export class ChatService {
       mode,
     );
 
-    // 8. Save assistant message with rich source citations
+    // 7. Save assistant message with rich source citations
     const sources = orderedResults.map((r) => ({
       document_id: r.document_id,
       title: r.title,
@@ -135,7 +149,14 @@ export class ChatService {
       sources,
     );
 
-    // 9. Touch session updated_at + auto-title on first user turn
+    // 8. Touch session metadata (fire-and-forget — does not block the response)
+    this.updateSessionMeta(sessionId, dto.content).catch(() => {});
+
+    return { userMessage: userMsg, assistantMessage: assistantMsg, mode };
+  }
+
+  /** Updates session updated_at and sets auto-title on the first turn. */
+  private async updateSessionMeta(sessionId: number, firstUserContent: string): Promise<void> {
     await this.db.query(
       `UPDATE chat_sessions SET updated_at = NOW() WHERE id = $1`,
       [sessionId],
@@ -145,14 +166,12 @@ export class ChatService {
       [sessionId],
     );
     if (parseInt(count.rows[0].count) <= 2) {
-      const shortTitle = dto.content.slice(0, 80);
+      const shortTitle = firstUserContent.slice(0, 80);
       await this.db.query(
         `UPDATE chat_sessions SET title = $1 WHERE id = $2`,
         [shortTitle, sessionId],
       );
     }
-
-    return { userMessage: userMsg, assistantMessage: assistantMsg, mode };
   }
 
   /**

@@ -27,6 +27,8 @@ export interface SearchOptions {
   dateTo?: string | Date;
   /** When true, sibling thread/PR/issue docs are appended to the result set. */
   expandThreads?: boolean;
+  /** Pre-computed embedding for the query — skips the generateEmbedding API call. */
+  precomputedEmbedding?: number[];
 }
 
 @Injectable()
@@ -53,7 +55,7 @@ export class SearchService {
     const limit = opts.limit ?? 5;
     const threshold = opts.threshold ?? 0.2;
 
-    const embedding = await this.openai.generateEmbedding(query);
+    const embedding = opts.precomputedEmbedding ?? await this.openai.generateEmbedding(query);
     const vector = `[${embedding.join(',')}]`;
 
     const where: string[] = [`1 - (e.embedding <=> $1::vector) > $2`];

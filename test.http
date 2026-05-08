@@ -74,103 +74,12 @@ Content-Type: application/json
 
 {
   "documents": [
-
   {
-
     "text": "Billing incident report INC-102\n\nDuplicate invoices were generated because failed payment events were retried multiple times during API timeout failures. The retry queue processed already completed transactions because the billing service lacked idempotency validation.",
-
     "title": "Duplicate Invoice Incident",
-
     "source": "notion",
-
     "author": "Rahul Sharma"
-
-  },
-
-  {
-
-    "text": "Slack billing outage discussion\n\nAmit Patel identified that Redis cache invalidation lag caused stale payment states to remain active longer than expected. During concurrent retries this increased the probability of duplicate invoice creation.",
-
-    "title": "Billing Outage Investigation",
-
-    "source": "slack",
-
-    "author": "Amit Patel"
-
-  },
-
-  {
-
-    "text": "PR #442 - billing reliability improvements\n\nImplemented idempotency validation, distributed payment locking, and retry queue reconciliation jobs to prevent duplicate invoice generation during payment retries.",
-
-    "title": "Billing Reliability Improvements",
-
-    "source": "github",
-
-    "author": "Rahul Sharma"
-
-  },
-
-  {
-
-    "text": "Engineering retrospective meeting\n\nRahul Sharma explained that payment retry logic was originally designed for low traffic scenarios and became unreliable under heavy concurrency. The team agreed to redesign retry processing with stronger transactional guarantees.",
-
-    "title": "Billing Retrospective Review",
-
-    "source": "slack",
-
-    "author": "Rahul Sharma"
-
-  },
-
-  {
-
-    "text": "Billing queue monitoring analysis\n\nThe infrastructure team added additional monitoring and alerting for retry queue failures after repeated invoice duplication incidents impacted financial reconciliation workflows.",
-
-    "title": "Retry Queue Monitoring Improvements",
-
-    "source": "github",
-
-    "author": "Amit Patel"
-
-  },
-
-  {
-
-    "text": "Incident resolution summary\n\nRahul Sharma led the implementation of idempotency protection while Amit Patel investigated Redis invalidation delays affecting payment consistency. Their combined fixes reduced duplicate invoice incidents by over 90 percent.",
-
-    "title": "Billing Incident Resolution Summary",
-
-    "source": "notion",
-
-    "author": "Priya Mehta"
-
-  },
-
-  {
-
-    "text": "Distributed locking proposal\n\nThe billing engineering team proposed distributed payment locking to prevent concurrent workers from processing the same invoice simultaneously during retry execution.",
-
-    "title": "Distributed Locking Proposal",
-
-    "source": "notion",
-
-    "author": "Rahul Sharma"
-
-  },
-
-  {
-
-    "text": "Billing architecture review\n\nThe team concluded that retry queue failures were amplified by stale Redis cache states and insufficient transaction boundaries in the payment service layer.",
-
-    "title": "Billing Architecture Review",
-
-    "source": "slack",
-
-    "author": "Amit Patel"
-
   }
-
 ]
  
  
