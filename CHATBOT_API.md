@@ -82,6 +82,8 @@ Content-Type: application/json
 
 After ingest the docs are embedded with `text-embedding-3-small` (1536 dim) and stored in pgvector for similarity search.
 
+
+
 ---
 
 ## 2. Raw semantic search (no LLM, no auth)
