@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
+import { DatabaseService } from '../../database/database.service';
 import { DocumentsService } from '../../documents/documents.service';
+import { ProjectsService } from '../../projects/projects.service';
 import { GithubIngestDto } from './dto/github-ingest.dto';
 
 @Injectable()
@@ -9,15 +10,28 @@ export class GithubService {
   private readonly logger = new Logger(GithubService.name);
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly db: DatabaseService,
     private readonly documents: DocumentsService,
+    private readonly projects: ProjectsService,
   ) {}
 
-  private headers(token?: string) {
-    const t = token || this.config.get<string>('GITHUB_TOKEN');
+  /**
+   * Resolves the GitHub PAT for a project.
+   * Priority: explicit override token > DB config.token.
+   * Throws if no token found — env fallback is intentionally removed.
+   */
+  private async resolveToken(projectId: number, explicitToken?: string): Promise<string> {
+    if (explicitToken) return explicitToken;
+    const integration = await this.projects.getIntegration(projectId, 'github');
+    const token = integration?.config?.token;
+    if (!token) throw new BadRequestException('GitHub token not configured for this project');
+    return token;
+  }
+
+  private headers(token: string) {
     return {
       Accept: 'application/vnd.github.v3+json',
-      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      Authorization: `Bearer ${token}`,
     };
   }
 
@@ -41,29 +55,46 @@ export class GithubService {
     return true;
   }
 
-  async ingest(dto: GithubIngestDto): Promise<{ stored: number[]; skipped: number }> {
+  /**
+   * Returns true if a document with the given metadata filter already exists
+   * for this project. Uses PostgreSQL JSONB @> (contains) operator.
+   * Scoped to project_id — same data in different projects is NOT a duplicate.
+   */
+  private async alreadyIngested(projectId: number, filter: Record<string, any>): Promise<boolean> {
+    const res = await this.db.query(
+      `SELECT 1 FROM documents WHERE project_id = $1 AND metadata @> $2::jsonb LIMIT 1`,
+      [projectId, JSON.stringify(filter)],
+    );
+    return res.rows.length > 0;
+  }
+  async ingest(dto: GithubIngestDto, projectId = 1): Promise<{ stored: number[]; skipped: number }> {
     const type = dto.type ?? 'all';
     const stored: number[] = [];
+    let skipped = 0;
+    const token = await this.resolveToken(projectId, dto.token);
 
     if (type === 'commits' || type === 'all') {
-      const ids = await this.ingestCommits(dto.owner, dto.repo, dto.limit, dto.branch, dto.token);
-      stored.push(...ids);
+      const result = await this.ingestCommits(dto.owner, dto.repo, dto.limit, dto.branch, token, projectId);
+      stored.push(...result.stored);
+      skipped += result.skipped;
     }
     if (type === 'pulls' || type === 'all') {
-      const ids = await this.ingestPulls(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', dto.token);
-      stored.push(...ids);
+      const result = await this.ingestPulls(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', token, projectId);
+      stored.push(...result.stored);
+      skipped += result.skipped;
     }
     if (type === 'issues' || type === 'all') {
-      const ids = await this.ingestIssues(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', dto.token);
-      stored.push(...ids);
+      const result = await this.ingestIssues(dto.owner, dto.repo, dto.limit, dto.state ?? 'all', token, projectId);
+      stored.push(...result.stored);
+      skipped += result.skipped;
     }
-
     if (type === 'files' || type === 'all') {
-      const ids = await this.ingestFiles(dto.owner, dto.repo, dto.branch, dto.filePaths, dto.token);
-      stored.push(...ids);
+      const result = await this.ingestFiles(dto.owner, dto.repo, dto.branch, dto.filePaths, token, projectId);
+      stored.push(...result.stored);
+      skipped += result.skipped;
     }
 
-    return { stored, skipped: 0 };
+    return { stored, skipped };
   }
 
   private async ingestCommits(
@@ -71,9 +102,11 @@ export class GithubService {
     repo: string,
     limit?: number,
     branch?: string,
-    token?: string,
-  ): Promise<number[]> {
+    token: string = '',
+    projectId = 1,
+  ): Promise<{ stored: number[]; skipped: number }> {
     const stored: number[] = [];
+    let skipped = 0;
     let page = 1;
     const repoFull = `${owner}/${repo}`;
 
@@ -92,6 +125,12 @@ export class GithubService {
       if (!data.length) break;
 
       for (const c of data) {
+        if (await this.alreadyIngested(projectId, { sha: c.sha, repo: repoFull })) {
+          skipped++;
+          if (limit !== undefined && stored.length + skipped >= limit) break;
+          continue;
+        }
+
         const doc = await this.documents.create({
           title: `[Commit] ${c.commit.message.split('\n')[0].slice(0, 120)}`,
           content: [
@@ -104,7 +143,7 @@ export class GithubService {
           author: c.commit.author.name || c.author?.login || null,
           dataCreatedAt: c.commit.author.date ?? null,
           metadata: { sha: c.sha, repo: repoFull, type: 'commit' },
-        });
+        }, projectId);
         stored.push(doc.id);
 
         if (limit !== undefined && stored.length >= limit) break;
@@ -117,8 +156,8 @@ export class GithubService {
       page++;
     }
 
-    this.logger.log(`Commits for ${repoFull}: ${stored.length} stored`);
-    return stored;
+    this.logger.log(`Commits for ${repoFull}: ${stored.length} stored, ${skipped} skipped (already exist)`);
+    return { stored, skipped };
   }
 
   private async ingestPulls(
@@ -126,9 +165,11 @@ export class GithubService {
     repo: string,
     limit?: number,
     state = 'all',
-    token?: string,
-  ): Promise<number[]> {
+    token: string = '',
+    projectId = 1,
+  ): Promise<{ stored: number[]; skipped: number }> {
     const stored: number[] = [];
+    let skipped = 0;
     let page = 1;
     const repoFull = `${owner}/${repo}`;
 
@@ -147,6 +188,12 @@ export class GithubService {
       if (!data.length) break;
 
       for (const pr of data) {
+        if (await this.alreadyIngested(projectId, { pr_number: pr.number, repo: repoFull })) {
+          skipped++;
+          if (limit !== undefined && stored.length + skipped >= limit) break;
+          continue;
+        }
+
         const doc = await this.documents.create({
           title: `[PR #${pr.number}] ${pr.title}`,
           content: [
@@ -161,7 +208,7 @@ export class GithubService {
           author: pr.user?.login ?? null,
           dataCreatedAt: pr.created_at ?? null,
           metadata: { pr_number: pr.number, repo: repoFull, type: 'pull_request', state: pr.state },
-        });
+        }, projectId);
         stored.push(doc.id);
 
         if (limit !== undefined && stored.length >= limit) break;
@@ -174,8 +221,8 @@ export class GithubService {
       page++;
     }
 
-    this.logger.log(`Pull requests for ${repoFull}: ${stored.length} stored`);
-    return stored;
+    this.logger.log(`Pull requests for ${repoFull}: ${stored.length} stored, ${skipped} skipped (already exist)`);
+    return { stored, skipped };
   }
 
   private async ingestIssues(
@@ -183,9 +230,11 @@ export class GithubService {
     repo: string,
     limit?: number,
     state = 'all',
-    token?: string,
-  ): Promise<number[]> {
+    token: string = '',
+    projectId = 1,
+  ): Promise<{ stored: number[]; skipped: number }> {
     const stored: number[] = [];
+    let skipped = 0;
     let page = 1;
     const repoFull = `${owner}/${repo}`;
 
@@ -207,6 +256,12 @@ export class GithubService {
       const issues = data.filter((i: any) => !i.pull_request);
 
       for (const issue of issues) {
+        if (await this.alreadyIngested(projectId, { issue_number: issue.number, repo: repoFull })) {
+          skipped++;
+          if (limit !== undefined && stored.length + skipped >= limit) break;
+          continue;
+        }
+
         const doc = await this.documents.create({
           title: `[Issue #${issue.number}] ${issue.title}`,
           content: [
@@ -221,7 +276,7 @@ export class GithubService {
           author: issue.user?.login ?? null,
           dataCreatedAt: issue.created_at ?? null,
           metadata: { issue_number: issue.number, repo: repoFull, type: 'issue', state: issue.state },
-        });
+        }, projectId);
         stored.push(doc.id);
 
         if (limit !== undefined && stored.length >= limit) break;
@@ -234,8 +289,8 @@ export class GithubService {
       page++;
     }
 
-    this.logger.log(`Issues for ${repoFull}: ${stored.length} stored`);
-    return stored;
+    this.logger.log(`Issues for ${repoFull}: ${stored.length} stored, ${skipped} skipped (already exist)`);
+    return { stored, skipped };
   }
 
   /**
@@ -274,9 +329,11 @@ export class GithubService {
     repo: string,
     branch?: string,
     filePaths?: string[],
-    token?: string,
-  ): Promise<number[]> {
+    token: string = '',
+    projectId = 1,
+  ): Promise<{ stored: number[]; skipped: number }> {
     const stored: number[] = [];
+    let skipped = 0;
     const repoFull = `${owner}/${repo}`;
     const ref = branch ?? 'HEAD';
 
@@ -315,6 +372,11 @@ export class GithubService {
 
     for (const file of targets) {
       try {
+        if (await this.alreadyIngested(projectId, { path: file.path, repo: repoFull })) {
+          skipped++;
+          continue;
+        }
+
         const contentRes = await axios.get(
           `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}`,
           {
@@ -342,7 +404,7 @@ export class GithubService {
           source: 'github',
           author: undefined,
           metadata: { path: file.path, repo: repoFull, type: 'file', sha: file.sha },
-        });
+        }, projectId);
         stored.push(doc.id);
 
         if (!this.checkRateLimit(contentRes)) break;
@@ -351,7 +413,7 @@ export class GithubService {
       }
     }
 
-    this.logger.log(`Files for ${repoFull}: ${stored.length} stored`);
-    return stored;
+    this.logger.log(`Files for ${repoFull}: ${stored.length} stored, ${skipped} skipped (already exist)`);
+    return { stored, skipped };
   }
 }

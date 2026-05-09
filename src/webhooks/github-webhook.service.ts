@@ -1,8 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import axios from "axios";
 import { DocumentsService } from "../documents/documents.service";
+import { ProjectsService } from "../projects/projects.service";
 
 @Injectable()
 export class GithubWebhookService {
@@ -11,13 +12,33 @@ export class GithubWebhookService {
   constructor(
     private readonly config: ConfigService,
     private readonly documents: DocumentsService,
+    private readonly projects: ProjectsService,
   ) {}
 
-  private authHeaders(token?: string, accept: string = "application/vnd.github.v3+json") {
-    const t = token ?? this.config.get<string>("GITHUB_TOKEN");
+  /**
+   * Resolves the GitHub PAT for a project from DB config.
+   * Throws if no token found — env fallback is intentionally removed.
+   */
+  private async resolveToken(projectId: number): Promise<string> {
+    const integration = await this.projects.getIntegration(projectId, 'github');
+    const token = integration?.config?.token;
+    if (!token) throw new BadRequestException('GitHub token not configured for this project');
+    return token;
+  }
+
+  /**
+   * Resolves the webhook secret for a project from DB config.
+   * Returns undefined if not configured (signature check is skipped).
+   */
+  private async resolveWebhookSecret(projectId: number): Promise<string | undefined> {
+    const integration = await this.projects.getIntegration(projectId, 'github');
+    return integration?.config?.webhookSecret;
+  }
+
+  private authHeaders(token: string, accept: string = "application/vnd.github.v3+json") {
     return {
       Accept: accept,
-      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      Authorization: `Bearer ${token}`,
     };
   }
 
@@ -25,11 +46,12 @@ export class GithubWebhookService {
     owner: string,
     repo: string,
     pullNumber: number,
+    token: string,
   ): Promise<string> {
     try {
       const { data } = await axios.get(
         `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`,
-        { headers: this.authHeaders(undefined, "application/vnd.github.v3.diff") },
+        { headers: this.authHeaders(token, "application/vnd.github.v3.diff") },
       );
       return data as string;
     } catch (err) {
@@ -44,11 +66,12 @@ export class GithubWebhookService {
     owner: string,
     repo: string,
     pullNumber: number,
+    token: string,
   ): Promise<any[]> {
     try {
       const { data } = await axios.get(
         `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/commits`,
-        { headers: this.authHeaders() },
+        { headers: this.authHeaders(token) },
       );
       return data;
     } catch (err) {
@@ -63,11 +86,12 @@ export class GithubWebhookService {
     owner: string,
     repo: string,
     ref: string,
+    token: string,
   ): Promise<string> {
     try {
       const { data } = await axios.get(
         `https://api.github.com/repos/${owner}/${repo}/commits/${ref}`,
-        { headers: this.authHeaders(undefined, "application/vnd.github.v3.diff") },
+        { headers: this.authHeaders(token, "application/vnd.github.v3.diff") },
       );
       return data as string;
     } catch (err) {
@@ -78,9 +102,9 @@ export class GithubWebhookService {
     }
   }
 
-  verify(rawBody: Buffer, signature: string): boolean {
-    const secret = this.config.get<string>("GITHUB_WEBHOOK_SECRET");
-    if (!secret) return true; // skip verification if not configured
+  async verify(rawBody: Buffer, signature: string, projectId: number): Promise<boolean> {
+    const secret = await this.resolveWebhookSecret(projectId);
+    if (!secret) return true; // skip verification if not configured in DB
     const expected = `sha256=${crypto
       .createHmac("sha256", secret)
       .update(rawBody)
@@ -91,14 +115,15 @@ export class GithubWebhookService {
     );
   }
 
-  async handlePush(payload: any): Promise<number[]> {
+  async handlePush(payload: any, projectId = 1): Promise<number[]> {
     const commits: any[] = payload.commits ?? [];
     const repo = payload.repository?.full_name ?? "unknown";
     const [owner, repoName] = repo.split("/");
     const stored: number[] = [];
+    const token = await this.resolveToken(projectId);
 
     for (const commit of commits) {
-      const diff = owner && repoName ? await this.getCommitDiff(owner, repoName, commit.id) : "";
+      const diff = owner && repoName ? await this.getCommitDiff(owner, repoName, commit.id, token) : "";
 
       const contentParts = [
         commit.message,
@@ -123,7 +148,7 @@ export class GithubWebhookService {
         author: commit.author?.name ?? null,
         dataCreatedAt: commit.timestamp ?? null,
         metadata: { sha: commit.id, repo, type: "commit", auto: true },
-      });
+      }, projectId);
       stored.push(doc.id);
       this.logger.log(
         `Auto-embedded commit ${commit.id.slice(0, 8)} from ${repo}`,
@@ -133,7 +158,7 @@ export class GithubWebhookService {
     return stored;
   }
 
-  async handlePullRequest(payload: any): Promise<number | null> {
+  async handlePullRequest(payload: any, projectId = 1): Promise<number | null> {
     const action: string = payload.action;
     if (!["opened", "edited", "closed", "synchronize"].includes(action))
       return null;
@@ -141,9 +166,10 @@ export class GithubWebhookService {
     const pr = payload.pull_request;
     const repo = payload.repository?.full_name ?? "unknown";
     const [owner, repoName] = repo.split("/");
+    const token = await this.resolveToken(projectId);
 
-    const diff = await this.getPullRequestDiff(owner, repoName, pr.number);
-    const commits = await this.getPullRequestCommits(owner, repoName, pr.number);
+    const diff = await this.getPullRequestDiff(owner, repoName, pr.number, token);
+    const commits = await this.getPullRequestCommits(owner, repoName, pr.number, token);
 
     const contentParts = [
       `PR #${pr.number}: ${pr.title}`,
@@ -183,13 +209,13 @@ export class GithubWebhookService {
         action,
         auto: true,
       },
-    });
+    }, projectId);
 
     this.logger.log(`Auto-embedded PR #${pr.number} (${action}) from ${repo}`);
     return doc.id;
   }
 
-  async handleIssueComment(payload: any): Promise<number | null> {
+  async handleIssueComment(payload: any, projectId = 1): Promise<number | null> {
     if (payload.action !== "created") return null;
 
     const comment = payload.comment;
@@ -218,7 +244,7 @@ export class GithubWebhookService {
         is_pr: isPr,
         auto: true,
       },
-    });
+    }, projectId);
 
     this.logger.log(
       `Auto-embedded issue_comment by ${comment.user.login} on #${issue.number} from ${repo}`,

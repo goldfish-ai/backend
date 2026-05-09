@@ -3,6 +3,7 @@ import { SearchService } from '../search/search.service';
 
 export interface ExpertsQuery {
   topic: string;
+  projectId?: number;
   modules?: string[];
   sources?: string[];
   limit?: number;
@@ -41,6 +42,7 @@ export class ExpertsService {
     const limit = q.limit ?? 5;
 
     const results = await this.search.search(q.topic, {
+      projectId: q.projectId,
       limit: 50,
       threshold: 0.05,
       modules: q.modules,

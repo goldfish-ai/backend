@@ -19,6 +19,7 @@ export interface SearchResult {
 }
 
 export interface SearchOptions {
+  projectId?: number;
   limit?: number;
   threshold?: number;
   sources?: string[];
@@ -67,6 +68,7 @@ export class SearchService {
       return `$${params.length}`;
     };
 
+    if (opts.projectId) where.push(`e.project_id = ${addParam(opts.projectId)}`);
     if (opts.sources?.length) where.push(`d.source = ANY(${addParam(opts.sources)})`);
     if (opts.modules?.length) where.push(`d.module = ANY(${addParam(opts.modules)})`);
     if (opts.authors?.length) where.push(`d.author = ANY(${addParam(opts.authors)})`);
@@ -101,7 +103,7 @@ export class SearchService {
 
     if (opts.expandThreads && results.length) {
       const highQuality = results.filter((r) => r.similarity >= 0.3);
-      results = await this.appendThreadSiblings(results, highQuality);
+      results = await this.appendThreadSiblings(results, highQuality, opts.projectId);
     }
 
     return results;
@@ -146,7 +148,7 @@ export class SearchService {
    * (same Slack thread, same PR/issue number, same repo) and merge them at the
    * end of the list with similarity=0 so the LLM has the full debate context.
    */
-  private async appendThreadSiblings(results: SearchResult[], seedResults?: SearchResult[]): Promise<SearchResult[]> {
+  private async appendThreadSiblings(results: SearchResult[], seedResults?: SearchResult[], projectId?: number): Promise<SearchResult[]> {
     const seen = new Set(results.map((r) => r.document_id));
     const extras: SearchResult[] = [];
     const toExpand = seedResults ?? results;
@@ -163,6 +165,7 @@ export class SearchService {
             WHERE source = 'slack'
               AND metadata->>'thread_ts' = $1
               AND id <> $2
+              ${projectId ? `AND project_id = ${projectId}` : ''}
             ORDER BY created_at ASC
             LIMIT 30`,
           [String(md.thread_ts), r.document_id],
@@ -179,6 +182,7 @@ export class SearchService {
               AND metadata->>'repo' = $1
               AND metadata->>'${numKey}' = $2
               AND id <> $3
+              ${projectId ? `AND project_id = ${projectId}` : ''}
             ORDER BY created_at ASC
             LIMIT 30`,
           [String(md.repo), String(numVal), r.document_id],

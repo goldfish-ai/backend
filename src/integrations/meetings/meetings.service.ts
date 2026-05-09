@@ -8,7 +8,7 @@ export class MeetingsService {
 
   constructor(private readonly documents: DocumentsService) {}
 
-  async ingest(dto: IngestMeetingDto): Promise<{ stored: number[] }> {
+  async ingest(dto: IngestMeetingDto, projectId = 1): Promise<{ stored: number[] }> {
     const stored: number[] = [];
 
     for (const entry of dto.transcript) {
@@ -27,7 +27,7 @@ export class MeetingsService {
           duration: dto.duration ?? null,
           type: 'meeting_transcript',
         },
-      });
+      }, projectId);
 
       stored.push(doc.id);
       this.logger.log(

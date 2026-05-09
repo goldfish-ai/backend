@@ -1,57 +1,84 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Client } from '@notionhq/client';
 import { DatabaseService } from '../database/database.service';
 import { DocumentsService } from '../documents/documents.service';
+
+interface ProjectNotionConfig {
+  projectId: number;
+  token: string;
+  databaseIds: string[];
+}
 
 @Injectable()
 export class NotionPollService {
   private readonly logger = new Logger(NotionPollService.name);
 
   constructor(
-    private readonly config: ConfigService,
     private readonly db: DatabaseService,
     private readonly documents: DocumentsService,
   ) {}
 
-  /** Poll every 15 minutes by default */
+  /** Poll every 30 minutes for all projects */
   @Cron(CronExpression.EVERY_30_MINUTES)
   async pollAll() {
-    const rawIds = this.config.get<string>('NOTION_POLL_DATABASES');
-    if (!rawIds) return;
-
-    const token = this.config.get<string>('NOTION_TOKEN');
-    if (!token) return;
-
-    const databaseIds = rawIds.split(',').map((s) => s.trim()).filter(Boolean);
-    for (const dbId of databaseIds) {
-      await this.pollDatabase(dbId, token);
+    const configs = await this.loadProjectConfigs();
+    for (const cfg of configs) {
+      for (const dbId of cfg.databaseIds) {
+        await this.pollDatabase(dbId, cfg.token, cfg.projectId);
+      }
     }
   }
 
-  /** Manual trigger via HTTP */
-  async triggerPoll(): Promise<{ ingested: number }> {
-    const rawIds = this.config.get<string>('NOTION_POLL_DATABASES') ?? '';
-    const token = this.config.get<string>('NOTION_TOKEN');
-    if (!token || !rawIds) return { ingested: 0 };
-
-    const databaseIds = rawIds.split(',').map((s) => s.trim()).filter(Boolean);
+  /** Manual trigger via HTTP — optionally scoped to a single project */
+  async triggerPoll(projectId?: number): Promise<{ ingested: number }> {
+    const configs = await this.loadProjectConfigs(projectId);
     let total = 0;
-    for (const dbId of databaseIds) {
-      const count = await this.pollDatabase(dbId, token);
-      total += count;
+    for (const cfg of configs) {
+      for (const dbId of cfg.databaseIds) {
+        const count = await this.pollDatabase(dbId, cfg.token, cfg.projectId);
+        total += count;
+      }
     }
     return { ingested: total };
   }
 
-  private async pollDatabase(databaseId: string, token: string): Promise<number> {
+  /**
+   * Load Notion configs from project_integrations.
+   * Falls back to env vars for project 1 when no DB rows exist for it.
+   */
+  private async loadProjectConfigs(projectId?: number): Promise<ProjectNotionConfig[]> {
+    const whereClause = projectId
+      ? `WHERE provider = 'notion' AND project_id = $1`
+      : `WHERE provider = 'notion'`;
+    const params = projectId ? [projectId] : [];
+
+    const res = await this.db.query(
+      `SELECT project_id, config FROM project_integrations ${whereClause}`,
+      params,
+    );
+
+    const configs: ProjectNotionConfig[] = res.rows
+      .map((row: any) => {
+        const cfg = row.config ?? {};
+        const token: string | undefined = cfg.token ?? cfg.access_token;
+        const rawDbs: string | undefined = cfg.poll_databases;
+        if (!token || !rawDbs) return null;
+        const databaseIds = rawDbs.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (!databaseIds.length) return null;
+        return { projectId: row.project_id as number, token, databaseIds };
+      })
+      .filter((c: ProjectNotionConfig | null): c is ProjectNotionConfig => c !== null);
+
+    return configs;
+  }
+
+  private async pollDatabase(databaseId: string, token: string, projectId: number): Promise<number> {
     const client = new Client({ auth: token });
 
-    // Get last poll time from DB
     const lastPollRes = await this.db.query(
       `SELECT value FROM meta WHERE key = $1`,
-      [`notion_last_poll_${databaseId}`],
+      [`notion_last_poll_${projectId}_${databaseId}`],
     );
     const lastPoll = lastPollRes.rows[0]?.value ?? new Date(0).toISOString();
 
@@ -68,13 +95,11 @@ export class NotionPollService {
       for (const page of response.results) {
         if (!('properties' in page)) continue;
 
-        // Check if already stored
         const exists = await this.db.query(
-          `SELECT id FROM documents WHERE metadata->>'notion_id' = $1`,
-          [page.id],
+          `SELECT id FROM documents WHERE metadata->>'notion_id' = $1 AND project_id = $2`,
+          [page.id, projectId],
         );
         if (exists.rows.length) {
-          // Update existing doc's content by deleting and re-embedding
           await this.db.query('DELETE FROM documents WHERE id = $1', [
             exists.rows[0].id,
           ]);
@@ -95,22 +120,21 @@ export class NotionPollService {
             url: (page as any).url,
             auto: true,
           },
-        });
+        }, projectId);
         ingested++;
       }
     } catch (err) {
-      this.logger.error(`Notion poll failed for ${databaseId}:`, err as Error);
+      this.logger.error(`Notion poll failed for project ${projectId} db ${databaseId}:`, err as Error);
     }
 
-    // Save poll time
     await this.db.query(
       `INSERT INTO meta (key, value) VALUES ($1, $2)
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-      [`notion_last_poll_${databaseId}`, new Date().toISOString()],
+      [`notion_last_poll_${projectId}_${databaseId}`, new Date().toISOString()],
     );
 
     if (ingested > 0) {
-      this.logger.log(`Notion: ingested ${ingested} updated page(s) from ${databaseId}`);
+      this.logger.log(`Notion: ingested ${ingested} page(s) from db ${databaseId} (project ${projectId})`);
     }
     return ingested;
   }

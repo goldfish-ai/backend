@@ -10,17 +10,17 @@ export class SummaryService {
     private readonly documents: DocumentsService,
   ) {}
 
-  async summarize(dto: SummaryDto) {
+  async summarize(dto: SummaryDto, projectId: number) {
     if (!dto.documentId && !dto.text) {
       throw new BadRequestException('Provide documentId or text');
     }
 
     if (dto.documentId) {
-      const doc = await this.documents.findOne(dto.documentId);
+      const doc = await this.documents.findOne(dto.documentId, projectId);
       const summary = await this.openai.summarize(doc.content, {
         maxWords: dto.maxWords,
       });
-      const updated = await this.documents.updateSummary(doc.id, summary);
+      const updated = await this.documents.updateSummary(doc.id, summary, projectId);
       return {
         documentId: doc.id,
         title: doc.title,
